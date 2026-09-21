@@ -46,6 +46,44 @@ un'app che chiama l'API solo quando è aperta.
   clima, ecc.).
 - **`app-mobile/`** — app Expo/React Native.
 
+## Avvio in locale
+
+Serve Docker (per il database) e Python 3.11+.
+
+```bash
+docker compose up -d                 # Postgres + PostGIS, schema caricato al primo avvio
+
+cd backend
+python3 -m venv .venv
+.venv/bin/pip install -r requirements-dev.txt
+
+cp .env.example .env                 # inserisci qui le tue credenziali Mercedes
+.venv/bin/python -m app.main
+```
+
+L'API risponde su `http://localhost:8000`; `GET /health` non richiede
+autenticazione, il resto vuole l'header `Authorization: Bearer <API_AUTH_TOKEN>`.
+
+Le credenziali stanno solo nel `.env` locale, che non viene mai committato.
+Conviene usare un account Mercedes dedicato, con MFA disattivata, e l'auto
+condivisa su quell'account.
+
+### Test
+
+I test del rilevamento viaggi girano contro un database vero:
+
+```bash
+cd backend
+TEST_DATABASE_URL=postgresql://mbcompanion:mbcompanion@localhost:5432/mbcompanion \
+    .venv/bin/python -m pytest -v
+```
+
+### Aggiornare lo strato di protocollo
+
+```bash
+cd backend && ./vendor.sh
+```
+
 ## Crediti
 
 Il layer di comunicazione con l'API Mercedes (protocollo protobuf via
