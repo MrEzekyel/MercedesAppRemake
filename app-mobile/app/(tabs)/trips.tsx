@@ -1,12 +1,35 @@
-import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
-import { FlatList, ImageBackground, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Dimensions,
+  ImageBackground,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { api, ApiError } from "../../src/api";
-import { colors, radius, spacing, typography } from "../../src/theme";
+import { AppHeader } from "../../src/components/AppHeader";
+import { ConsumptionChart } from "../../src/components/ConsumptionChart";
+import { ChevronIcon, RouteIcon } from "../../src/components/icons";
+import { colors, radius, spacing } from "../../src/theme";
 import type { TripSummary } from "../../src/types";
 
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
+const CHART_W = SCREEN_W - spacing.lg * 2 - spacing.md * 2;
+/**
+ * Nello scatto di profilo l'auto occupa la fascia 45-63% dell'inquadratura:
+ * il contenuto deve iniziare sotto le ruote, altrimenti le taglia via.
+ */
+const SHEET_TOP = Math.round(SCREEN_H * 0.7) - 160;
+
+/**
+ * Come le altre schermate: la fotografia riempie lo schermo e resta fissa,
+ * il contenuto ci scorre sopra. Prima i consumi in forma di grafico (il
+ * dato utile e' la tendenza, non il singolo numero), poi l'elenco.
+ */
 export default function ViaggiScreen() {
   const [trips, setTrips] = useState<TripSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -23,67 +46,87 @@ export default function ViaggiScreen() {
     }, [])
   );
 
-  const header = (
-    <ImageBackground
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      source={require("../../assets/vehicle/side.jpg")}
-      style={styles.hero}
-      imageStyle={styles.heroImage}
-    >
-      <LinearGradient
-        colors={["transparent", "rgba(6,9,16,0.55)", colors.background]}
-        locations={[0, 0.65, 1]}
-        style={StyleSheet.absoluteFillObject}
-      />
-
-      <View style={styles.headerRow}>
-        <Ionicons name="menu-outline" size={20} color={colors.textPrimary} style={{ opacity: 0.85 }} />
-        <View style={styles.monogram}>
-          <View style={styles.monogramDot} />
-        </View>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarLabel}>A</Text>
-        </View>
-      </View>
-
-      <View style={styles.titleBlock}>
-        <Text style={styles.title}>Viaggi</Text>
-        <Text style={styles.subtitle}>
-          {trips.length > 0 ? `${trips.length} viaggi registrati` : "Nessun viaggio ancora"}
-        </Text>
-      </View>
-    </ImageBackground>
-  );
-
-  if (error) {
-    return (
-      <View style={styles.centered}>
-        <Text style={styles.errorText}>{error}</Text>
-      </View>
-    );
-  }
-
-  if (trips.length === 0) {
-    return (
-      <View style={styles.screen}>
-        {header}
-        <View style={styles.emptyBody}>
-          <Ionicons name="map-outline" size={40} color={colors.textTertiary} />
-          <Text style={styles.emptyText}>Nessun viaggio registrato ancora</Text>
-        </View>
-      </View>
-    );
-  }
+  const closed = trips.filter((t) => t.ended_at !== null);
+  const totalKm = sum(closed.map((t) => t.distance_effective_km));
+  const totalFuel = sum(closed.map((t) => t.fuel_used_l));
+  const avgConsumption = totalKm > 0 && totalFuel > 0 ? (totalFuel / totalKm) * 100 : null;
 
   return (
-    <FlatList
-      style={styles.screen}
-      contentContainerStyle={styles.list}
-      data={trips}
-      keyExtractor={(t) => t.id}
-      ListHeaderComponent={header}
-      renderItem={({ item }) => <TripRow trip={item} />}
-    />
+    <View style={styles.screen}>
+      <ImageBackground
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        source={require("../../assets/vehicle/side.jpg")}
+        style={StyleSheet.absoluteFill}
+        imageStyle={styles.heroImage}
+      />
+
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <AppHeader />
+
+        <View style={styles.titleBlock}>
+          <Text style={styles.title}>Viaggi</Text>
+          <Text style={styles.subtitle}>
+            {trips.length > 0 ? `${trips.length} registrati` : "Nessun viaggio ancora"}
+          </Text>
+        </View>
+
+        {/* Il contenuto sale sopra la foto: la sfumatura evita il taglio netto. */}
+        <View style={styles.sheet}>
+          <LinearGradient
+            colors={["transparent", "rgba(6,9,16,0.75)", colors.background]}
+            locations={[0, 0.45, 1]}
+            style={styles.sheetFade}
+            pointerEvents="none"
+          />
+
+          <View style={styles.sheetBody}>
+            {error && <Text style={styles.errorText}>{error}</Text>}
+
+            <Text style={styles.sectionLabel}>Consumi</Text>
+            <View style={styles.chartCard}>
+              <ConsumptionChart trips={trips} width={CHART_W} />
+            </View>
+
+            <View style={styles.summaryRow}>
+              <Summary value={totalKm > 0 ? fmtKm(totalKm) : "—"} unit="km" label="Percorsi" />
+              <View style={styles.hairline} />
+              <Summary value={totalFuel > 0 ? totalFuel.toFixed(1) : "—"} unit="l" label="Carburante" />
+              <View style={styles.hairline} />
+              <Summary
+                value={avgConsumption ? avgConsumption.toFixed(1) : "—"}
+                unit="l/100"
+                label="Media"
+              />
+            </View>
+
+            <Text style={[styles.sectionLabel, styles.sectionSpaced]}>Storico</Text>
+
+            {trips.length === 0 ? (
+              <View style={styles.empty}>
+                <RouteIcon size={30} color={colors.textTertiary} strokeWidth={1.2} />
+                <Text style={styles.emptyText}>
+                  Nessun viaggio registrato: appena l&apos;auto si muove compare qui
+                </Text>
+              </View>
+            ) : (
+              trips.map((trip) => <TripRow key={trip.id} trip={trip} />)
+            )}
+          </View>
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+function Summary({ value, unit, label }: { value: string; unit: string; label: string }) {
+  return (
+    <View style={styles.summary}>
+      <Text style={styles.summaryValue} numberOfLines={1}>
+        {value}
+        <Text style={styles.summaryUnit}> {unit}</Text>
+      </Text>
+      <Text style={styles.summaryLabel}>{label}</Text>
+    </View>
   );
 }
 
@@ -97,11 +140,9 @@ function TripRow({ trip }: { trip: TripSummary }) {
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
     >
       <View style={styles.rowLeft}>
-        <Text style={styles.rowDate}>
-          {date.toLocaleDateString("it-IT", { day: "numeric", month: "short" })}
-        </Text>
-        <Text style={styles.rowTime}>
-          {date.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}
+        <Text style={styles.rowDay}>{date.toLocaleDateString("it-IT", { day: "2-digit" })}</Text>
+        <Text style={styles.rowMonth}>
+          {date.toLocaleDateString("it-IT", { month: "short" }).replace(".", "")}
         </Text>
       </View>
 
@@ -109,20 +150,27 @@ function TripRow({ trip }: { trip: TripSummary }) {
         <Text style={styles.rowDistance}>
           {inCorso ? "In corso…" : `${fmt(trip.distance_effective_km)} km`}
         </Text>
-        {!inCorso && (
-          <Text style={styles.rowMeta}>
-            {fmtDuration(trip.duration_s)} · {fmt(trip.l_per_100km)} L/100km
-          </Text>
-        )}
+        <Text style={styles.rowMeta}>
+          {date.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}
+          {!inCorso && ` · ${fmtDuration(trip.duration_s)} · ${fmt(trip.l_per_100km)} l/100km`}
+        </Text>
       </View>
 
-      <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+      <ChevronIcon size={15} color="rgba(255,255,255,0.32)" strokeWidth={1.5} />
     </Pressable>
   );
 }
 
+function sum(values: (number | null)[]): number {
+  return values.reduce<number>((acc, v) => acc + (v ?? 0), 0);
+}
+
 function fmt(value: number | null, decimals = 1): string {
   return value === null ? "—" : value.toFixed(decimals);
+}
+
+function fmtKm(value: number): string {
+  return Math.round(value).toLocaleString("it-IT");
 }
 
 function fmtDuration(seconds: number | null): string {
@@ -134,64 +182,68 @@ function fmtDuration(seconds: number | null): string {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  list: { paddingBottom: spacing.xl, gap: spacing.sm },
-  hero: { width: "100%", height: 400, marginBottom: spacing.md },
   heroImage: { resizeMode: "cover", transform: [{ scale: 1.09 }] },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingTop: spacing.xl + spacing.md,
-    paddingHorizontal: spacing.md,
-  },
-  monogram: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.35)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  monogramDot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: colors.accent },
-  avatar: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarLabel: { color: colors.textPrimary, fontSize: 11, fontWeight: "600" },
+  /** La tab bar e' trasparente e sovrapposta: il contenuto le lascia spazio. */
+  content: { paddingBottom: 110 },
+
   titleBlock: { alignItems: "center", marginTop: spacing.md },
   title: { fontSize: 24, fontWeight: "600", color: colors.textPrimary },
   subtitle: { fontSize: 13, color: colors.textSecondary, marginTop: 4 },
-  centered: {
-    flex: 1,
-    backgroundColor: colors.background,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-    padding: spacing.lg,
+
+  /** Lo spazio vuoto lascia vedere l'auto prima che il contenuto la copra. */
+  sheet: { marginTop: SHEET_TOP },
+  sheetFade: { position: "absolute", left: 0, right: 0, top: -170, height: 170 },
+  sheetBody: { backgroundColor: colors.background, paddingHorizontal: spacing.md, gap: spacing.sm },
+
+  sectionLabel: {
+    fontSize: 9.5,
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    color: "rgba(255,255,255,0.42)",
   },
-  emptyBody: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.sm },
-  errorText: { ...typography.body, color: colors.danger, textAlign: "center" },
-  emptyText: { ...typography.body, color: colors.textTertiary },
+  sectionSpaced: { marginTop: spacing.lg },
+  chartCard: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.sm },
+
+  summaryRow: { flexDirection: "row", alignItems: "center", marginBottom: spacing.sm },
+  summary: { flex: 1, alignItems: "center", gap: 6 },
+  summaryValue: { fontSize: 21, fontWeight: "600", color: colors.textPrimary, letterSpacing: -0.5 },
+  summaryUnit: { fontSize: 11, fontWeight: "500", color: colors.textSecondary, letterSpacing: 0 },
+  summaryLabel: {
+    fontSize: 9,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    color: "rgba(255,255,255,0.4)",
+  },
+  hairline: { width: 1, height: 26, backgroundColor: "rgba(255,255,255,0.13)" },
+
   row: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    marginHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 4,
     gap: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.07)",
   },
-  rowPressed: { opacity: 0.7 },
-  rowLeft: { width: 56 },
-  rowDate: { ...typography.caption, color: colors.textPrimary, fontWeight: "700" },
-  rowTime: { ...typography.caption, color: colors.textTertiary },
-  rowCenter: { flex: 1, gap: 2 },
-  rowDistance: { ...typography.body, color: colors.textPrimary, fontWeight: "600" },
-  rowMeta: { ...typography.caption, color: colors.textTertiary },
+  rowPressed: { opacity: 0.55 },
+  rowLeft: { width: 34, alignItems: "center" },
+  rowDay: { fontSize: 17, fontWeight: "600", color: colors.textPrimary },
+  rowMonth: {
+    fontSize: 8.5,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    color: "rgba(255,255,255,0.4)",
+  },
+  rowCenter: { flex: 1, gap: 3 },
+  rowDistance: { fontSize: 15, fontWeight: "600", color: colors.textPrimary },
+  rowMeta: { fontSize: 11.5, color: "rgba(255,255,255,0.45)" },
+
+  empty: { alignItems: "center", gap: spacing.sm, paddingVertical: spacing.xl },
+  emptyText: {
+    fontSize: 12.5,
+    color: colors.textTertiary,
+    textAlign: "center",
+    paddingHorizontal: spacing.lg,
+    lineHeight: 18,
+  },
+  errorText: { fontSize: 12, color: colors.danger, textAlign: "center" },
 });

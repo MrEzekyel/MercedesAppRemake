@@ -3,6 +3,14 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
 import MapView, { Polyline } from "react-native-maps";
 import { api, ApiError } from "../../src/api";
+import {
+  ClockIcon,
+  FuelIcon,
+  LeafIcon,
+  OdometerIcon,
+  RangeIcon,
+  RouteIcon,
+} from "../../src/components/icons";
 import { StatTile } from "../../src/components/StatTile";
 import { colors, radius, spacing, typography } from "../../src/theme";
 import type { TripDetail } from "../../src/types";
@@ -52,14 +60,14 @@ export default function TripDetailScreen() {
       )}
 
       <View style={styles.statsGrid}>
-        <StatTile label="Distanza" value={fmt(trip.distance_effective_km)} unit="km" />
-        <StatTile label="Durata" value={fmtDuration(trip.duration_s)} />
-        <StatTile label="Vel. media" value={fmt(trip.avg_speed_kmh, 0)} unit="km/h" />
+        <StatTile Icon={RangeIcon} label="Distanza" value={fmt(trip.distance_effective_km)} unit=" km" />
+        <StatTile Icon={ClockIcon} label="Durata" value={fmtDuration(trip.duration_s)} />
+        <StatTile Icon={OdometerIcon} label="Vel. media" value={fmt(trip.avg_speed_kmh, 0)} unit=" km/h" />
       </View>
       <View style={styles.statsGrid}>
-        <StatTile label="Consumo" value={fmt(trip.l_per_100km)} unit="L/100km" />
-        <StatTile label="Litri usati" value={fmt(trip.fuel_used_l)} unit="L" />
-        <StatTile label="Km/litro" value={fmt(trip.km_per_l)} />
+        <StatTile Icon={LeafIcon} label="Consumo" value={fmt(trip.l_per_100km)} unit=" l/100" />
+        <StatTile Icon={FuelIcon} label="Litri usati" value={fmt(trip.fuel_used_l)} unit=" l" />
+        <StatTile Icon={RouteIcon} label="Km/litro" value={fmt(trip.km_per_l)} />
       </View>
     </ScrollView>
   );

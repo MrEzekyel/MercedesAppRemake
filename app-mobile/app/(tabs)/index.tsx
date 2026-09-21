@@ -2,6 +2,7 @@ import { useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { api, ApiError } from "../../src/api";
+import { FuelIcon, OdometerIcon, RangeIcon } from "../../src/components/icons";
 import { StatTile } from "../../src/components/StatTile";
 import { VehicleHeroCard } from "../../src/components/VehicleHeroCard";
 import { colors, spacing, typography } from "../../src/theme";
@@ -53,12 +54,10 @@ export default function StatoScreen() {
           )}
 
           <View style={styles.statsGrid}>
-            <StatTile icon="water-outline" label="Carburante" value={fmt(state?.fuel_level_pct)} unit="%" />
-            <StatTile icon="speedometer-outline" label="Autonomia" value={fmt(state?.range_km, 0)} unit="km" />
-            <StatTile icon="time-outline" label="Km totali" value={fmt(state?.odometer_km, 0)} unit="km" />
+            <StatTile Icon={FuelIcon} label="Carburante" value={fmt(state?.fuel_level_pct, 0)} unit="%" />
+            <StatTile Icon={RangeIcon} label="Autonomia" value={fmt(state?.range_km, 0)} unit=" km" />
+            <StatTile Icon={OdometerIcon} label="Percorsi" value={fmtKm(state?.odometer_km)} unit=" km" />
           </View>
-
-          <Text style={styles.hint}>Tocca l'auto per aprire lo stato completo e i comandi</Text>
         </VehicleHeroCard>
       </View>
     </ScrollView>
@@ -68,6 +67,12 @@ export default function StatoScreen() {
 function fmt(value: number | null | undefined, decimals = 1): string {
   if (value === null || value === undefined) return "—";
   return value.toFixed(decimals);
+}
+
+/** Il contachilometri e' a cinque cifre: senza separatore diventa illeggibile. */
+function fmtKm(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "—";
+  return Math.round(value).toLocaleString("it-IT");
 }
 
 const styles = StyleSheet.create({
@@ -81,6 +86,5 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   errorText: { ...typography.caption, color: colors.danger },
-  statsGrid: { flexDirection: "row", gap: spacing.sm },
-  hint: { ...typography.caption, color: colors.textTertiary, textAlign: "center", marginTop: spacing.sm },
+  statsGrid: { flexDirection: "row" },
 });

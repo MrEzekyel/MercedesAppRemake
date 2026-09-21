@@ -1,26 +1,36 @@
-import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
-import { LinearGradient } from "expo-linear-gradient";
 import { router, useFocusEffect } from "expo-router";
+import type { ComponentType } from "react";
 import { useCallback, useState } from "react";
-import {
-  ImageBackground,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { ImageBackground, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { api, ApiError, type CommandResult } from "../src/api";
-import { colors, radius, spacing, typography } from "../src/theme";
+import { AppHeader } from "../src/components/AppHeader";
+import {
+  ChevronIcon,
+  ClimateIcon,
+  HornIcon,
+  type IconProps,
+  LightIcon,
+  LockIcon,
+  UnlockIcon,
+  WindowIcon,
+} from "../src/components/icons";
+import { colors, radius, spacing } from "../src/theme";
 import type { TripSummary, VehicleState } from "../src/types";
 
-type CommandKey = "toggleLock" | "windows" | "lights" | "horn";
+type CommandKey = "toggleLock" | "windows" | "lights" | "horn" | "climate";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Stessa impaginazione della schermata di riferimento: fotografia a tutto
+ * schermo, intestazione e titolo centrati in alto, colonna galleggiante a
+ * destra e dati in fondo. L'unica differenza e' l'uso della colonna: li'
+ * mostra l'ultimo viaggio, qui raccoglie i comandi remoti, perche' i dati
+ * stanno gia' in basso.
+ */
 export default function VehicleDetailScreen() {
   const [state, setState] = useState<VehicleState | null>(null);
   const [lastTrip, setLastTrip] = useState<TripSummary | null>(null);
@@ -70,6 +80,7 @@ export default function VehicleDetailScreen() {
   );
 
   const locked = state?.doors_locked;
+  const windowsOpen = state?.openings?.windows_overall === "open";
   const tankCapacity = state?.tank_capacity_l;
   const fuelUsedPct =
     lastTrip?.fuel_used_l != null && tankCapacity ? (lastTrip.fuel_used_l / tankCapacity) * 100 : null;
@@ -82,105 +93,135 @@ export default function VehicleDetailScreen() {
         style={styles.hero}
         imageStyle={styles.heroImage}
       >
-        <LinearGradient
-          colors={["transparent", "rgba(6,9,16,0.5)", colors.background]}
-          locations={[0, 0.6, 1]}
-          style={StyleSheet.absoluteFillObject}
-        />
+        <AppHeader />
 
-        <View style={styles.headerRow}>
-          <Pressable onPress={() => router.back()} style={styles.backButton}>
-            <Ionicons name="chevron-back" size={18} color={colors.textPrimary} />
-          </Pressable>
-          <Text style={styles.headerTitle}>{state?.display_name ?? "Classe A Premium"}</Text>
-          <View style={{ width: 34 }} />
+        <View style={styles.titleBlock}>
+          <Text style={styles.title}>{state?.display_name ?? "Classe A Premium"}</Text>
+          <Text style={styles.subtitle}>
+            {locked === null || locked === undefined
+              ? "Stato sconosciuto"
+              : locked
+                ? "Chiusa e sorvegliata"
+                : "Aperta"}
+          </Text>
         </View>
 
-        {/* Pannello comandi, scorrevole al suo interno */}
-        <BlurView intensity={40} tint="dark" style={styles.panel}>
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.panelContent}>
-            <CommandRow
-              icon={locked ? "lock-open-outline" : "lock-closed-outline"}
-              label={locked ? "Apri" : "Chiudi"}
-              pending={pending === "toggleLock"}
-              onPress={() => runCommand("toggleLock", locked ? api.unlock : api.lock)}
-            />
-            <CommandRow
-              icon="square-outline"
-              label="Finestrini"
-              pending={pending === "windows"}
-              onPress={() => runCommand("windows", api.windowsClose)}
-            />
-            <CommandRow
-              icon="flash-outline"
-              label="Luci"
-              pending={pending === "lights"}
-              onPress={() => runCommand("lights", api.flashLights)}
-            />
-            <CommandRow
-              icon="megaphone-outline"
-              label="Clacson"
-              pending={pending === "horn"}
-              onPress={() => runCommand("horn", api.sound)}
-            />
-          </ScrollView>
-        </BlurView>
-      </ImageBackground>
-
-      <View style={styles.body}>
-        {error && (
-          <View style={styles.errorBanner}>
-            <Text style={styles.errorText}>{error}</Text>
+        <Pressable onPress={() => router.back()} style={styles.backHit} hitSlop={10}>
+          <View style={styles.backIcon}>
+            <ChevronIcon size={15} color={colors.textPrimary} strokeWidth={1.6} />
           </View>
-        )}
+        </Pressable>
 
-        <Text style={styles.sectionLabel}>Ultimo viaggio</Text>
-        <View style={styles.tripCard}>
-          <TripStat value={fmt(lastTrip?.distance_effective_km, 0)} unit="km" label="Percorsi" />
-          <View style={styles.tripDivider} />
-          <TripStat value={fmt(fuelUsedPct, 0)} unit="%" label="Serbatoio usato" />
-          <View style={styles.tripDivider} />
-          <TripStat value={fmt(lastTrip?.l_per_100km)} unit="L/100" label="Consumo medio" />
+        {/* Colonna comandi: galleggia sulla foto, scorre al suo interno. */}
+        <View style={styles.panelWrap}>
+          <View style={styles.panelChevron}>
+            <ChevronIcon size={13} color="rgba(255,255,255,0.45)" strokeWidth={1.5} />
+          </View>
+
+          <BlurView intensity={28} tint="dark" style={styles.panel}>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.panelContent}>
+              <CommandButton
+                Icon={locked ? UnlockIcon : LockIcon}
+                label={locked ? "Apri" : "Chiudi"}
+                caption="porte"
+                pending={pending === "toggleLock"}
+                onPress={() => runCommand("toggleLock", locked ? api.unlock : api.lock)}
+              />
+              <CommandButton
+                Icon={WindowIcon}
+                label={windowsOpen ? "Chiudi" : "Apri"}
+                caption="finestrini"
+                pending={pending === "windows"}
+                onPress={() =>
+                  runCommand("windows", windowsOpen ? api.windowsClose : api.windowsOpen)
+                }
+              />
+              <CommandButton
+                Icon={LightIcon}
+                label="Luci"
+                caption="lampeggio"
+                pending={pending === "lights"}
+                onPress={() => runCommand("lights", api.flashLights)}
+              />
+              <CommandButton
+                Icon={HornIcon}
+                label="Clacson"
+                caption="segnale"
+                pending={pending === "horn"}
+                onPress={() => runCommand("horn", api.sound)}
+              />
+              <CommandButton
+                Icon={ClimateIcon}
+                label="Clima"
+                caption="avvia"
+                pending={pending === "climate"}
+                onPress={() => runCommand("climate", api.climateStart)}
+              />
+            </ScrollView>
+          </BlurView>
+
+          <View style={[styles.panelChevron, styles.panelChevronDown]}>
+            <ChevronIcon size={13} color="rgba(255,255,255,0.45)" strokeWidth={1.5} />
+          </View>
         </View>
-      </View>
+
+        {/* Ultimo viaggio: numeri liberi sulla foto, separati da filetti. */}
+        <View style={styles.footer}>
+          {error && <Text style={styles.errorText}>{error}</Text>}
+
+          <Text style={styles.footerLabel}>
+            Ultimo viaggio{lastTrip ? ` · ${shortDate(lastTrip.started_at)}` : ""}
+          </Text>
+
+          <View style={styles.footerRow}>
+            <FooterStat value={fmt(lastTrip?.distance_effective_km, 1)} unit="km" label="Distanza" />
+            <View style={styles.hairline} />
+            <FooterStat value={fmt(fuelUsedPct, 0)} unit="%" label="Serbatoio" />
+            <View style={styles.hairline} />
+            <FooterStat value={fmt(lastTrip?.l_per_100km, 1)} unit="l/100" label="Consumo" />
+          </View>
+        </View>
+      </ImageBackground>
     </View>
   );
 }
 
-function CommandRow({
-  icon,
+function CommandButton({
+  Icon,
   label,
+  caption,
   pending,
   onPress,
 }: {
-  icon: keyof typeof Ionicons.glyphMap;
+  Icon: ComponentType<IconProps>;
   label: string;
+  caption: string;
   pending: boolean;
   onPress: () => void;
 }) {
   return (
-    <Pressable onPress={onPress} disabled={pending} style={styles.commandRow}>
-      <View style={[styles.commandBadge, pending && styles.commandBadgeActive]}>
-        <Ionicons name={icon} size={17} color={pending ? colors.accent : colors.textPrimary} />
+    <Pressable
+      onPress={onPress}
+      disabled={pending}
+      style={({ pressed }) => [styles.command, pressed && styles.commandPressed]}
+    >
+      <View style={[styles.commandDisc, pending && styles.commandDiscActive]}>
+        <Icon size={20} color={pending ? colors.accent : colors.textPrimary} strokeWidth={1.3} />
       </View>
       <Text style={styles.commandLabel}>{label}</Text>
-      {pending ? (
-        <Text style={styles.commandStatus}>in corso…</Text>
-      ) : (
-        <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
-      )}
+      <Text style={styles.commandCaption}>{pending ? "invio…" : caption}</Text>
     </Pressable>
   );
 }
 
-function TripStat({ value, unit, label }: { value: string; unit: string; label: string }) {
+function FooterStat({ value, unit, label }: { value: string; unit: string; label: string }) {
   return (
-    <View style={styles.tripStat}>
-      <Text style={styles.tripValue}>
+    <View style={styles.footerStat}>
+      <Text style={styles.footerValue} numberOfLines={1}>
         {value}
-        <Text style={styles.tripUnit}> {unit}</Text>
+        <Text style={styles.footerUnit}> {unit}</Text>
       </Text>
-      <Text style={styles.tripLabel}>{label}</Text>
+      <Text style={styles.footerCaption}>{label}</Text>
     </View>
   );
 }
@@ -190,68 +231,97 @@ function fmt(value: number | null | undefined, decimals = 1): string {
   return value.toFixed(decimals);
 }
 
+function shortDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("it-IT", { day: "numeric", month: "short" });
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  hero: { width: "100%", height: 480 },
-  heroImage: { resizeMode: "cover" },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingTop: spacing.xl + spacing.md,
-    paddingHorizontal: spacing.md,
-  },
-  backButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+  hero: { flex: 1, width: "100%" },
+  heroImage: { resizeMode: "cover", transform: [{ scale: 1.06 }] },
+
+  titleBlock: { alignItems: "center", marginTop: spacing.md, paddingHorizontal: spacing.xl },
+  title: { fontSize: 22, fontWeight: "600", color: colors.textPrimary, textAlign: "center" },
+  subtitle: { fontSize: 13, color: colors.textSecondary, marginTop: 5 },
+
+  /** Rotazione di 180°: un solo glifo chevron serve per tutte le direzioni. */
+  backHit: { position: "absolute", left: spacing.md, top: spacing.xl + spacing.md + 44 },
+  backIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: "rgba(255,255,255,0.08)",
     alignItems: "center",
     justifyContent: "center",
+    transform: [{ rotate: "180deg" }],
   },
-  headerTitle: { color: colors.textPrimary, fontSize: 15, fontWeight: "600" },
-  panel: {
+
+  panelWrap: {
     position: "absolute",
     right: spacing.md,
-    top: 130,
-    bottom: 24,
-    width: 150,
+    top: "28%",
+    bottom: "26%",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  panelChevron: { transform: [{ rotate: "-90deg" }] },
+  panelChevronDown: { transform: [{ rotate: "90deg" }] },
+  panel: {
+    flex: 1,
+    width: 104,
     borderRadius: radius.lg,
     overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
   },
-  panelContent: { padding: spacing.sm, gap: spacing.sm },
-  commandRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    backgroundColor: "rgba(255,255,255,0.05)",
-    borderRadius: radius.md,
-    padding: spacing.xs,
-  },
-  commandBadge: {
-    width: 30,
-    height: 30,
-    borderRadius: 9,
-    backgroundColor: "rgba(255,255,255,0.06)",
+  panelContent: { paddingVertical: spacing.sm, gap: 2 },
+  command: { alignItems: "center", paddingVertical: spacing.sm, gap: 5 },
+  commandPressed: { opacity: 0.55 },
+  commandDisc: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.07)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
     alignItems: "center",
     justifyContent: "center",
   },
-  commandBadgeActive: { backgroundColor: colors.accentSoft },
-  commandLabel: { flex: 1, color: colors.textPrimary, fontSize: 12, fontWeight: "500" },
-  commandStatus: { color: colors.accent, fontSize: 9 },
-  body: { paddingHorizontal: spacing.md, marginTop: spacing.lg, gap: spacing.sm },
-  errorBanner: { backgroundColor: "rgba(193,85,77,0.14)", borderRadius: 12, padding: spacing.sm },
-  errorText: { ...typography.caption, color: colors.danger },
-  sectionLabel: { ...typography.statLabel, color: colors.textTertiary, textTransform: "uppercase" },
-  tripCard: {
-    flexDirection: "row",
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    paddingVertical: spacing.md,
+  commandDiscActive: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
+  commandLabel: { color: colors.textPrimary, fontSize: 12, fontWeight: "600" },
+  commandCaption: {
+    color: "rgba(255,255,255,0.4)",
+    fontSize: 8.5,
+    letterSpacing: 0.9,
+    textTransform: "uppercase",
   },
-  tripStat: { flex: 1, alignItems: "center", gap: 4 },
-  tripDivider: { width: 1, backgroundColor: colors.border },
-  tripValue: { ...typography.statValue, color: colors.textPrimary },
-  tripUnit: { ...typography.caption, color: colors.textTertiary },
-  tripLabel: { ...typography.statLabel, color: colors.textTertiary, textTransform: "uppercase" },
+
+  footer: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: spacing.xl + spacing.sm,
+    paddingHorizontal: spacing.lg,
+    gap: spacing.md,
+  },
+  footerLabel: {
+    fontSize: 9.5,
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    color: "rgba(255,255,255,0.42)",
+    textAlign: "center",
+  },
+  footerRow: { flexDirection: "row", alignItems: "center" },
+  footerStat: { flex: 1, alignItems: "center", gap: 6 },
+  footerValue: { fontSize: 24, fontWeight: "600", color: colors.textPrimary, letterSpacing: -0.6 },
+  footerUnit: { fontSize: 12, fontWeight: "500", color: colors.textSecondary, letterSpacing: 0 },
+  footerCaption: {
+    fontSize: 9.5,
+    letterSpacing: 1.3,
+    textTransform: "uppercase",
+    color: "rgba(255,255,255,0.42)",
+  },
+  hairline: { width: 1, height: 30, backgroundColor: "rgba(255,255,255,0.13)" },
+  errorText: { fontSize: 12, color: colors.danger, textAlign: "center" },
 });
