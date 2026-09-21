@@ -30,6 +30,35 @@ def parse_update(update: Any) -> dict[str, Any]:
     return {key: attribute_value(attr) for key, attr in update.attributes.items()}
 
 
+# Mercedes ha smesso di mandare VEPUpdate (mappa generica nome -> attributo)
+# e manda invece VehicleStatusUpdate: un messaggio con un campo tipizzato per
+# ogni segnale (odo, ignitionstate, ...), ciascuno un wrapper con un .value
+# diretto invece di un oneof scalare. I nomi coincidono quasi tutti col
+# vecchio formato; solo questi erano camelCase nel vecchio formato e sono
+# diventati snake_case nel nuovo: li rimappiamo per non dover toccare trip.py
+# / refuel.py / service.py, che si aspettano ancora le chiavi vecchie.
+_VEHICLE_STATUS_ALIASES = {
+    "distance_start": "distanceStart",
+    "average_speed_start": "averageSpeedStart",
+    "position_heading": "positionHeading",
+    "position_lat": "positionLat",
+    "position_long": "positionLong",
+}
+
+
+def parse_vehicle_status_update(update: Any) -> dict[str, Any]:
+    """Appiattisce un VehicleStatusUpdate in un dizionario nome -> valore,
+    con le stesse chiavi usate da parse_update per il vecchio formato.
+    """
+    result: dict[str, Any] = {}
+    for field, value in update.ListFields():
+        if not hasattr(value, "value"):
+            continue
+        key = _VEHICLE_STATUS_ALIASES.get(field.name, field.name)
+        result[key] = value.value
+    return result
+
+
 def is_ignition_on(attrs: dict[str, Any]) -> bool | None:
     """True se il motore risulta acceso, None se l'evento non lo dice.
 

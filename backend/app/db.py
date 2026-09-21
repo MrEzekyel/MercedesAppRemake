@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -311,7 +312,12 @@ class Database:
 def _row_to_dict(row: asyncpg.Record) -> dict[str, Any]:
     out = dict(row)
     for key, value in out.items():
+        # asyncpg restituisce le colonne numeric come Decimal; FastAPI le
+        # serializza come stringa (per non perdere precisione), ma l'app
+        # mobile si aspetta un number su cui chiamare .toFixed().
+        if isinstance(value, Decimal):
+            out[key] = float(value)
         # asyncpg restituisce jsonb come stringa se non e' registrato un codec.
-        if isinstance(value, str) and key in {"openings", "tire_pressures", "warnings"}:
+        elif isinstance(value, str) and key in {"openings", "tire_pressures", "warnings"}:
             out[key] = json.loads(value)
     return out

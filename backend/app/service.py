@@ -17,7 +17,7 @@ from . import mbapi  # noqa: F401  installa la compatibilita' Home Assistant
 from .config import settings
 from .db import Database
 from .ha_compat import ConfigEntry, HomeAssistant, async_create_clientsession
-from .events import IGNITION_ON, parse_update, position
+from .events import IGNITION_ON, parse_update, parse_vehicle_status_update, position
 from .mbapi.app_version import AppVersionManager
 from .mbapi.errors import MBAuth2FAError, MBAuthError
 from .mbapi.oauth import Oauth
@@ -102,26 +102,42 @@ class MercedesService:
         numero di sequenza non e' opzionale.
         """
         msg_type = data.WhichOneof("msg")
-        if msg_type != "vepUpdates":
-            return None
-
-        for vin, update in data.vepUpdates.updates.items():
-            asyncio.create_task(self._handle_update_safe(vin, update))
-
         ack = client_pb2.ClientMessage()
-        ack.acknowledge_vep_updates_by_vin.sequence_number = data.vepUpdates.sequence_number
-        return ack
 
-    async def _handle_update_safe(self, vin: str, update: Any) -> None:
+        # Mercedes manda gli aggiornamenti in due formati diversi a seconda
+        # dell'account/veicolo: il vecchio vepUpdates (mappa generica di
+        # attributi) e il nuovo vehicle_status_updates (campi tipizzati). Se
+        # non gestiamo entrambi, i messaggi del formato non previsto vengono
+        # scartati qui senza errori e senza ack, e l'auto smette di mandarne
+        # altri: e' cosi' che il DB restava vuoto pur con websocket connesso.
+        if msg_type == "vepUpdates":
+            for vin, update in data.vepUpdates.updates.items():
+                asyncio.create_task(self._handle_update_safe(vin, update, parse_update))
+            ack.acknowledge_vep_updates_by_vin.sequence_number = data.vepUpdates.sequence_number
+            return ack
+
+        if msg_type == "vehicle_status_updates":
+            for vin, update in data.vehicle_status_updates.vehicle_status_updates.items():
+                asyncio.create_task(
+                    self._handle_update_safe(vin, update, parse_vehicle_status_update)
+                )
+            ack.acknowledge_vehicle_status_updates.sequence_number = (
+                data.vehicle_status_updates.sequence_number
+            )
+            return ack
+
+        return None
+
+    async def _handle_update_safe(self, vin: str, update: Any, parser) -> None:
         try:
-            await self._handle_update(vin, update)
+            await self._handle_update(vin, update, parser)
         except Exception:
             # Un evento malformato non deve interrompere lo stream: resta
             # in raw_event e possiamo rigiocarlo dopo aver corretto la logica.
             LOGGER.exception("Errore elaborando l'aggiornamento per %s", vin[-4:])
 
-    async def _handle_update(self, vin: str, update: Any) -> None:
-        attrs = parse_update(update)
+    async def _handle_update(self, vin: str, update: Any, parser) -> None:
+        attrs = parser(update)
         ts = _timestamp(update)
 
         await self._db.ensure_vehicle(vin)
