@@ -105,6 +105,28 @@ possono girare anche sul database che usi normalmente.
 cd backend && ./vendor.sh
 ```
 
+### L'app (Expo)
+
+Serve il backend gia' avviato (sopra) e Node.js.
+
+```bash
+cd app-mobile
+npm install
+cp src/config.example.ts src/config.ts
+```
+
+In `config.ts` metti l'IP del Mac sulla rete WiFi (non `localhost`: il
+telefono e' un altro dispositivo) — lo trovi con `ipconfig getifaddr en0` —
+e lo stesso `API_AUTH_TOKEN` che hai messo nel `.env` del backend.
+
+```bash
+npm start
+```
+
+Si apre Expo Dev Tools con un QR code: lo inquadri con l'app **Expo Go** sul
+telefono (stessa rete WiFi del Mac) e l'app si carica. Non serve Xcode ne'
+un account sviluppatore per questa fase di test.
+
 ## Crediti
 
 Il layer di comunicazione con l'API Mercedes (protocollo protobuf via

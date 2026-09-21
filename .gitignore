@@ -16,6 +16,7 @@ node_modules/
 .expo/
 dist/
 web-build/
+app-mobile/src/config.ts
 
 # OS
 .DS_Store

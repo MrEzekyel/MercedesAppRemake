@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "MB Companion",
+    "slug": "mb-companion",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "mbcompanion",
+    "userInterfaceStyle": "dark",
+    "plugins": ["expo-router"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "it.andreadecaro.mbcompanion",
+      "config": {
+        "usesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "it.andreadecaro.mbcompanion"
+    }
+  }
+}
