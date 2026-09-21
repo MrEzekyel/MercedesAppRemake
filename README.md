@@ -48,11 +48,30 @@ un'app che chiama l'API solo quando è aperta.
 
 ## Avvio in locale
 
-Serve Docker (per il database) e Python 3.11+.
+Serve Python 3.11+ e un Postgres con PostGIS.
+
+### Il database
+
+Con Docker:
 
 ```bash
-docker compose up -d                 # Postgres + PostGIS, schema caricato al primo avvio
+docker compose up -d                 # schema caricato al primo avvio
+```
 
+Senza Docker, su macOS: [Postgres.app](https://postgresapp.com) include gia'
+PostGIS. Dopo averlo avviato, crea il database e caricaci lo schema:
+
+```bash
+createdb mbcompanion
+psql -d mbcompanion -f db/schema.sql
+```
+
+In questo caso l'utente e' il tuo account macOS, quindi in `.env` serve:
+`DATABASE_URL=postgresql://$(whoami)@localhost:5432/mbcompanion`
+
+### Il backend
+
+```bash
 cd backend
 python3 -m venv .venv
 .venv/bin/pip install -r requirements-dev.txt
@@ -74,9 +93,11 @@ I test del rilevamento viaggi girano contro un database vero:
 
 ```bash
 cd backend
-TEST_DATABASE_URL=postgresql://mbcompanion:mbcompanion@localhost:5432/mbcompanion \
-    .venv/bin/python -m pytest -v
+TEST_DATABASE_URL=<stessa URL del .env> .venv/bin/python -m pytest -v
 ```
+
+I test scrivono e cancellano un veicolo di prova (VIN `TESTVIN...`), quindi
+possono girare anche sul database che usi normalmente.
 
 ### Aggiornare lo strato di protocollo
 
