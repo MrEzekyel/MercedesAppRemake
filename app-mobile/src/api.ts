@@ -72,4 +72,34 @@ export const api = {
 
   deleteRefuel: (id: string): Promise<{ deleted: boolean }> =>
     request(`/api/refuels/${id}`, { method: "DELETE" }),
+
+  lock: (vin: string): Promise<CommandResult> =>
+    request(`/api/vehicles/${vin}/lock`, { method: "POST" }),
+
+  unlock: (vin: string): Promise<CommandResult> =>
+    request(`/api/vehicles/${vin}/unlock`, { method: "POST" }),
+
+  climateStart: (vin: string): Promise<CommandResult> =>
+    request(`/api/vehicles/${vin}/climate/start`, { method: "POST" }),
+
+  climateStop: (vin: string): Promise<CommandResult> =>
+    request(`/api/vehicles/${vin}/climate/stop`, { method: "POST" }),
+
+  flashLights: (vin: string): Promise<CommandResult> =>
+    request(`/api/vehicles/${vin}/lights`, { method: "POST" }),
+
+  getCommand: (id: string): Promise<CommandStatus> => request(`/api/commands/${id}`),
 };
+
+export interface CommandResult {
+  command_id: string;
+  status: string;
+}
+
+export interface CommandStatus {
+  id: string;
+  vin: string;
+  command: string;
+  status: "pending" | "completed" | "failed";
+  error: string | null;
+}

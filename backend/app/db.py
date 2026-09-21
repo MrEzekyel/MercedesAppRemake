@@ -308,6 +308,33 @@ class Database:
         result = await self.pool.execute("DELETE FROM refuel WHERE id = $1", refuel_id)
         return result != "DELETE 0"
 
+    # -- comandi remoti ------------------------------------------------------
+
+    async def log_command(
+        self, command_id: UUID, vin: str, command: str, params: dict[str, Any]
+    ) -> None:
+        """Registra un comando appena inviato. L'id e' anche il request_id
+        mandato a Mercedes, cosi' la risposta asincrona (apptwin_command_
+        status_updates_by_vin) si puo' ricollegare a questa riga.
+        """
+        await self.pool.execute(
+            "INSERT INTO command_log (id, vin, command, params) VALUES ($1, $2, $3, $4)",
+            command_id, vin, command, json.dumps(params),
+        )
+
+    async def complete_command(self, command_id: UUID, status: str, error: str | None) -> None:
+        await self.pool.execute(
+            """
+            UPDATE command_log SET status = $2, error = $3, completed_at = now()
+            WHERE id = $1 AND status = 'pending'
+            """,
+            command_id, status, error,
+        )
+
+    async def get_command(self, command_id: UUID) -> dict[str, Any] | None:
+        row = await self.pool.fetchrow("SELECT * FROM command_log WHERE id = $1", command_id)
+        return _row_to_dict(row) if row else None
+
 
 def _row_to_dict(row: asyncpg.Record) -> dict[str, Any]:
     out = dict(row)
@@ -318,6 +345,6 @@ def _row_to_dict(row: asyncpg.Record) -> dict[str, Any]:
         if isinstance(value, Decimal):
             out[key] = float(value)
         # asyncpg restituisce jsonb come stringa se non e' registrato un codec.
-        elif isinstance(value, str) and key in {"openings", "tire_pressures", "warnings"}:
+        elif isinstance(value, str) and key in {"openings", "tire_pressures", "warnings", "params"}:
             out[key] = json.loads(value)
     return out

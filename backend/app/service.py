@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from datetime import datetime, timezone
 from typing import Any
 
 from google.protobuf.json_format import MessageToDict
 
+from . import commands
 from . import mbapi  # noqa: F401  installa la compatibilita' Home Assistant
 from .config import settings
 from .db import Database
@@ -25,6 +27,12 @@ from .mbapi.proto import client_pb2
 from .mbapi.websocket import Websocket
 from .refuel import RefuelDetector
 from .trips import TripRecorder
+
+# Stati terminali di AppTwinCommandStatus.state (vehicle_events.proto):
+# 5=FINISHED, 6=FAILED. Gli altri (ENQUEUED, PROCESSING, WAITING_*, ...) sono
+# intermedi: il comando resta "pending" finche' non arriva uno di questi due.
+_COMMAND_FINISHED = 5
+_COMMAND_FAILED = 6
 
 LOGGER = logging.getLogger(__name__)
 
@@ -89,6 +97,23 @@ class MercedesService:
         if self._websocket:
             await self._websocket.async_stop()
 
+    async def send_command(self, vin: str, command: str) -> uuid.UUID:
+        """Invia un comando remoto (chiudi/apri, clima, luci) e lo registra.
+
+        L'id generato qui e' anche il request_id mandato a Mercedes: la
+        conferma/fallimento arriva in modo asincrono su un altro messaggio
+        websocket (apptwin_command_status_updates_by_vin) e viene ricollegata
+        a questa riga tramite quello stesso id in _handle_command_status.
+        """
+        if self._websocket is None:
+            raise RuntimeError("Websocket non connesso")
+
+        command_id = uuid.uuid4()
+        message = commands.build(command, vin, str(command_id), pin=settings.mb_pin)
+        await self._db.log_command(command_id, vin, command, {})
+        await self._websocket.call(message, car_command=True)
+        return command_id
+
     def _on_data(self, data: Any) -> Any:
         """Gestisce un messaggio dell'auto e restituisce l'acknowledgment.
 
@@ -126,7 +151,34 @@ class MercedesService:
             )
             return ack
 
+        if msg_type == "apptwin_command_status_updates_by_vin":
+            payload = data.apptwin_command_status_updates_by_vin
+            for by_vin in payload.updates_by_vin.values():
+                for status in by_vin.updates_by_pid.values():
+                    asyncio.create_task(self._handle_command_status(status))
+            ack.acknowledge_apptwin_command_status_update_by_vin.sequence_number = (
+                payload.sequence_number
+            )
+            return ack
+
         return None
+
+    async def _handle_command_status(self, status: Any) -> None:
+        # Stati intermedi (ENQUEUED, PROCESSING, WAITING_*, ...): non e'
+        # ancora il momento di aggiornare la riga, resta "pending".
+        if status.state not in (_COMMAND_FINISHED, _COMMAND_FAILED):
+            return
+        try:
+            command_id = uuid.UUID(status.request_id)
+        except ValueError:
+            # request_id non nostro (es. comando lanciato dall'app ufficiale
+            # Mercedes Me): non c'e' una riga command_log da aggiornare.
+            return
+        if status.state == _COMMAND_FINISHED:
+            await self._db.complete_command(command_id, "completed", None)
+        else:
+            error = status.errors.message or status.errors.code or "Comando rifiutato"
+            await self._db.complete_command(command_id, "failed", error)
 
     async def _handle_update_safe(self, vin: str, update: Any, parser) -> None:
         try:
