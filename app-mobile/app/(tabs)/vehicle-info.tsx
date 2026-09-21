@@ -1,8 +1,10 @@
+import { LinearGradient } from "expo-linear-gradient";
 import { router, useFocusEffect } from "expo-router";
 import type { ComponentType } from "react";
 import { useCallback, useState } from "react";
 import {
   Dimensions,
+  Image,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -18,6 +20,8 @@ import {
   CheckIcon,
   ChevronIcon,
   ClockIcon,
+  DoorClosedIcon,
+  DoorOpenIcon,
   FuelIcon,
   type IconProps,
   LeafIcon,
@@ -27,23 +31,35 @@ import {
   TireIcon,
   TrunkIcon,
   UnlockIcon,
+  WindowClosedIcon,
   WindowIcon,
+  WindowOpenIcon,
   WrenchIcon,
 } from "../../src/components/icons";
-import { type Part, VehicleTopView } from "../../src/components/VehicleTopView";
 import { colors, radius, spacing } from "../../src/theme";
 import type { VehicleState } from "../../src/types";
 
 const { width: SCREEN_W } = Dimensions.get("window");
-const CAR_W = Math.min(190, SCREEN_W * 0.46);
+/**
+ * Lo scatto dall'alto e' 1116x2000 e l'auto ne occupa la fascia centrale:
+ * la finestra mostra quella, con un po' di zoom come nel riferimento.
+ */
+const STAGE_W = SCREEN_W;
+const STAGE_H = Math.round(SCREEN_W * 1.18);
 
 type Mode = "aperture" | "manutenzione";
 
+/**
+ * Nello scatto il muso e' rivolto verso il basso: guardando l'auto
+ * dall'alto da davanti, il suo lato sinistro cade a destra nell'immagine e
+ * l'avantreno in basso. Le pastiglie seguono la posizione reale della
+ * ruota sulla foto, non l'ordine con cui si elencano a parole.
+ */
 const CORNERS = [
-  { key: "fl", label: "AS", tire: "front_left", door: "door_front_left", window: "window_front_left" },
-  { key: "fr", label: "AD", tire: "front_right", door: "door_front_right", window: "window_front_right" },
-  { key: "rl", label: "PS", tire: "rear_left", door: "door_rear_left", window: "window_rear_left" },
-  { key: "rr", label: "PD", tire: "rear_right", door: "door_rear_right", window: "window_rear_right" },
+  { key: "rr", label: "PD", pos: "tl", tire: "rear_right", door: "door_rear_right", window: "window_rear_right" },
+  { key: "rl", label: "PS", pos: "tr", tire: "rear_left", door: "door_rear_left", window: "window_rear_left" },
+  { key: "fr", label: "AD", pos: "bl", tire: "front_right", door: "door_front_right", window: "window_front_right" },
+  { key: "fl", label: "AS", pos: "br", tire: "front_left", door: "door_front_left", window: "window_front_left" },
 ] as const;
 
 const WARNING_LABELS: Record<string, string> = {
@@ -66,7 +82,6 @@ export default function InfoVeicoloScreen() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [mode, setMode] = useState<Mode>("aperture");
-  const [selected, setSelected] = useState<Part | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -94,13 +109,6 @@ export default function InfoVeicoloScreen() {
   const tires = state?.tire_pressures ?? {};
   const warnings = Object.entries(WARNING_LABELS).filter(([key]) => state?.warnings?.[key]);
   const service = state?.service_interval_days ?? null;
-
-  const openParts = new Set<Part>();
-  for (const [key, value] of Object.entries(openings)) {
-    if (key.startsWith("door_") && value === "open") openParts.add(key as Part);
-    if (key.startsWith("window_") && value !== "closed") openParts.add(key as Part);
-    if (key === "hood" && value === "open") openParts.add("hood");
-  }
 
   return (
     <ScrollView
@@ -132,28 +140,33 @@ export default function InfoVeicoloScreen() {
 
       {/* Auto e angoli: il cuore della schermata */}
       <View style={styles.stage}>
-        <VehicleTopView width={CAR_W} open={openParts} highlight={selected} />
+        <Image
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          source={require("../../assets/vehicle/top.jpg")}
+          style={styles.car}
+          resizeMode="cover"
+        />
 
-        {CORNERS.map((corner, i) => {
-          const isTop = i < 2;
-          const isLeft = i % 2 === 0;
-          const part = (mode === "aperture" ? corner.door : null) as Part | null;
+        {/* Sfuma sopra e sotto: senza, la foto sembra un rettangolo incollato */}
+        <LinearGradient
+          colors={[colors.background, "transparent"]}
+          style={styles.fadeTop}
+          pointerEvents="none"
+        />
+        <LinearGradient
+          colors={["transparent", colors.background]}
+          style={styles.fadeBottom}
+          pointerEvents="none"
+        />
+
+        {CORNERS.map((corner) => {
+          const isTop = corner.pos[0] === "t";
+          const isLeft = corner.pos[1] === "l";
 
           const pressure = tires[corner.tire];
           const doorOpen = openings[corner.door] === "open";
           const windowState = openings[corner.window];
           const windowOpen = windowState !== undefined && windowState !== "closed";
-
-          const value =
-            mode === "manutenzione"
-              ? pressure != null
-                ? `${pressure.toFixed(2)} bar`
-                : "—"
-              : doorOpen
-                ? "Porta aperta"
-                : windowOpen
-                  ? `Finestrino ${windowLabel(windowState).toLowerCase()}`
-                  : "Tutto chiuso";
 
           const alert =
             mode === "manutenzione"
@@ -161,9 +174,8 @@ export default function InfoVeicoloScreen() {
               : doorOpen || windowOpen;
 
           return (
-            <Pressable
+            <View
               key={corner.key}
-              onPress={() => setSelected(part && selected !== part ? part : null)}
               style={[
                 styles.corner,
                 isTop ? styles.cornerTop : styles.cornerBottom,
@@ -172,8 +184,26 @@ export default function InfoVeicoloScreen() {
               ]}
             >
               <Text style={styles.cornerLabel}>{corner.label}</Text>
-              <Text style={[styles.cornerValue, alert && styles.cornerValueAlert]}>{value}</Text>
-            </Pressable>
+
+              {mode === "manutenzione" ? (
+                <Text style={[styles.cornerValue, alert && styles.cornerValueAlert]}>
+                  {pressure != null ? `${pressure.toFixed(2)} bar` : "—"}
+                </Text>
+              ) : (
+                <View style={styles.cornerIcons}>
+                  {doorOpen ? (
+                    <DoorOpenIcon size={19} color={colors.warning} strokeWidth={1.35} />
+                  ) : (
+                    <DoorClosedIcon size={19} color="rgba(255,255,255,0.8)" strokeWidth={1.35} />
+                  )}
+                  {windowOpen ? (
+                    <WindowOpenIcon size={19} color={colors.warning} strokeWidth={1.35} />
+                  ) : (
+                    <WindowClosedIcon size={19} color="rgba(255,255,255,0.8)" strokeWidth={1.35} />
+                  )}
+                </View>
+              )}
+            </View>
           );
         })}
       </View>
@@ -411,7 +441,20 @@ const styles = StyleSheet.create({
   segmentLabel: { fontSize: 12.5, fontWeight: "500", color: "rgba(255,255,255,0.5)" },
   segmentLabelActive: { color: colors.textPrimary, fontWeight: "600" },
 
-  stage: { alignItems: "center", justifyContent: "center", marginTop: spacing.lg, paddingVertical: spacing.md },
+  /**
+   * overflow: hidden e' obbligatorio: lo zoom sull'immagine altrimenti
+   * deborda e copre titolo e selettore qui sopra.
+   */
+  stage: {
+    width: STAGE_W,
+    height: STAGE_H,
+    marginTop: spacing.md,
+    overflow: "hidden",
+    justifyContent: "center",
+  },
+  car: { width: STAGE_W, height: STAGE_H, transform: [{ scale: 1.18 }] },
+  fadeTop: { position: "absolute", left: 0, right: 0, top: 0, height: 70 },
+  fadeBottom: { position: "absolute", left: 0, right: 0, bottom: 0, height: 90 },
   corner: {
     position: "absolute",
     minWidth: 92,
@@ -436,6 +479,7 @@ const styles = StyleSheet.create({
   },
   cornerValue: { fontSize: 13, fontWeight: "600", color: colors.textPrimary },
   cornerValueAlert: { color: colors.warning },
+  cornerIcons: { flexDirection: "row", gap: spacing.sm, marginTop: 2 },
 
   body: { paddingHorizontal: spacing.md, marginTop: spacing.lg },
   sectionLabel: {

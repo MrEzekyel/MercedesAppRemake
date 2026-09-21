@@ -1,15 +1,7 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
-import {
-  Dimensions,
-  ImageBackground,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Dimensions, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { api, ApiError } from "../../src/api";
 import { AppHeader } from "../../src/components/AppHeader";
 import { ConsumptionChart } from "../../src/components/ConsumptionChart";
@@ -20,10 +12,13 @@ import type { TripSummary } from "../../src/types";
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 const CHART_W = SCREEN_W - spacing.lg * 2 - spacing.md * 2;
 /**
- * Nello scatto di profilo l'auto occupa la fascia 45-63% dell'inquadratura:
- * il contenuto deve iniziare sotto le ruote, altrimenti le taglia via.
+ * Lo scatto e' 1116x2000: riempiendo lo schermo in "cover" il muso finiva
+ * fuori dal bordo destro. Qui l'immagine tiene le sue proporzioni a
+ * larghezza piena, cosi' si vede intera, e il contenuto parte sotto le
+ * ruote (l'auto occupa la fascia 45-63% dell'inquadratura).
  */
-const SHEET_TOP = Math.round(SCREEN_H * 0.7) - 160;
+const IMAGE_H = Math.round(SCREEN_W * (2000 / 1116));
+const SHEET_TOP = Math.round(IMAGE_H * 0.68) - 160;
 
 /**
  * Come le altre schermate: la fotografia riempie lo schermo e resta fissa,
@@ -53,11 +48,11 @@ export default function ViaggiScreen() {
 
   return (
     <View style={styles.screen}>
-      <ImageBackground
+      <Image
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         source={require("../../assets/vehicle/side.jpg")}
-        style={StyleSheet.absoluteFill}
-        imageStyle={styles.heroImage}
+        style={styles.hero}
+        resizeMode="cover"
       />
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -182,7 +177,7 @@ function fmtDuration(seconds: number | null): string {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  heroImage: { resizeMode: "cover", transform: [{ scale: 1.09 }] },
+  hero: { position: "absolute", top: 0, left: 0, width: SCREEN_W, height: IMAGE_H },
   /** La tab bar e' trasparente e sovrapposta: il contenuto le lascia spazio. */
   content: { paddingBottom: 110 },
 

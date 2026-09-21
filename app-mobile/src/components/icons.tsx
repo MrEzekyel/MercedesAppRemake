@@ -140,6 +140,43 @@ export const DoorIcon = icon(({ color, strokeWidth }) => (
   </>
 ));
 
+/**
+ * Coppie chiuso/aperto per porta e finestrino: a distinguerle non e' solo
+ * il colore ma il disegno stesso (la porta ruota sul cardine, il vetro
+ * scende nella portiera), cosi' lo stato si legge anche in bianco e nero.
+ */
+export const DoorClosedIcon = icon(({ color, strokeWidth }) => (
+  <>
+    <Path d="M6 20V6.8a1.6 1.6 0 0 1 1.2-1.6l8-2a1.6 1.6 0 0 1 2 1.6V20" stroke={color} strokeWidth={strokeWidth} {...S} />
+    <Line x1="4" y1="20" x2="19" y2="20" stroke={color} strokeWidth={strokeWidth} {...S} />
+    <Circle cx="14" cy="12.6" r="1" stroke={color} strokeWidth={strokeWidth} />
+  </>
+));
+
+export const DoorOpenIcon = icon(({ color, strokeWidth }) => (
+  <>
+    <Line x1="5" y1="3.5" x2="5" y2="20" stroke={color} strokeWidth={strokeWidth} {...S} />
+    <Path d="M8.5 20V9.4a1.6 1.6 0 0 1 1.1-1.5l7-2.3A1.6 1.6 0 0 1 18.7 7.1V20" stroke={color} strokeWidth={strokeWidth} {...S} />
+    <Line x1="3" y1="20" x2="21" y2="20" stroke={color} strokeWidth={strokeWidth} {...S} />
+    <Path d="M5 6.2 8.5 9.4" stroke={color} strokeWidth={strokeWidth} strokeDasharray="1.5 2" {...S} />
+  </>
+));
+
+export const WindowClosedIcon = icon(({ color, strokeWidth }) => (
+  <>
+    <Path d="M4 19V9.6a2 2 0 0 1 .6-1.4l3-3A2 2 0 0 1 9 4.6h6.6a2 2 0 0 1 2 2V19z" stroke={color} strokeWidth={strokeWidth} {...S} />
+    <Line x1="4" y1="16" x2="17.6" y2="16" stroke={color} strokeWidth={strokeWidth} {...S} />
+  </>
+));
+
+export const WindowOpenIcon = icon(({ color, strokeWidth }) => (
+  <>
+    <Path d="M4 19V9.6a2 2 0 0 1 .6-1.4l3-3A2 2 0 0 1 9 4.6h6.6a2 2 0 0 1 2 2V19z" stroke={color} strokeWidth={strokeWidth} strokeDasharray="2.5 2.5" {...S} />
+    <Line x1="4" y1="16" x2="17.6" y2="16" stroke={color} strokeWidth={strokeWidth} {...S} />
+    <Path d="M10.8 8.2 14 11.4l3.2-3.2" stroke={color} strokeWidth={strokeWidth} {...S} />
+  </>
+));
+
 export const TrunkIcon = icon(({ color, strokeWidth }) => (
   <>
     <Path d="M3 16.5v-1a9 9 0 0 1 18 0v1" stroke={color} strokeWidth={strokeWidth} {...S} />
