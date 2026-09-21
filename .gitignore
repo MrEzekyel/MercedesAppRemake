@@ -9,6 +9,7 @@ venv/
 .env
 .env.*
 !.env.example
+backend/data/
 
 # Node / Expo
 node_modules/

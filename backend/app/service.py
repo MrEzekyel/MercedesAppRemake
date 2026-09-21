@@ -6,6 +6,7 @@ veicolo e li passa al rilevatore di viaggi.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Any
@@ -86,27 +87,36 @@ class MercedesService:
         if self._websocket:
             await self._websocket.async_stop()
 
-    async def _on_data(self, data: Any) -> Any:
+    def _on_data(self, data: Any) -> Any:
         """Gestisce un messaggio dell'auto e restituisce l'acknowledgment.
 
-        Mercedes smette di inviare aggiornamenti se non vengono confermati:
-        l'ack del numero di sequenza non e' opzionale.
+        Il websocket vendorizzato (mbapi2020) chiama questo callback in modo
+        sincrono e non lo awaita mai (vedi app/mbapi/websocket.py): definirlo
+        `async def` fa si' che l'ack ritornato sia una coroutine mai eseguita
+        invece del messaggio protobuf atteso. L'ack va quindi costruito qui in
+        modo sincrono; le scritture su DB, che sono async, vengono schedulate
+        come task separati cosi' l'ack parte subito. Mercedes smette di
+        inviare aggiornamenti se non vengono confermati in tempo: l'ack del
+        numero di sequenza non e' opzionale.
         """
         msg_type = data.WhichOneof("msg")
         if msg_type != "vepUpdates":
             return None
 
         for vin, update in data.vepUpdates.updates.items():
-            try:
-                await self._handle_update(vin, update)
-            except Exception:
-                # Un evento malformato non deve interrompere lo stream: resta
-                # in raw_event e possiamo rigiocarlo dopo aver corretto la logica.
-                LOGGER.exception("Errore elaborando l'aggiornamento per %s", vin[-4:])
+            asyncio.create_task(self._handle_update_safe(vin, update))
 
         ack = client_pb2.ClientMessage()
         ack.acknowledge_vep_updates_by_vin.sequence_number = data.vepUpdates.sequence_number
         return ack
+
+    async def _handle_update_safe(self, vin: str, update: Any) -> None:
+        try:
+            await self._handle_update(vin, update)
+        except Exception:
+            # Un evento malformato non deve interrompere lo stream: resta
+            # in raw_event e possiamo rigiocarlo dopo aver corretto la logica.
+            LOGGER.exception("Errore elaborando l'aggiornamento per %s", vin[-4:])
 
     async def _handle_update(self, vin: str, update: Any) -> None:
         attrs = parse_update(update)
