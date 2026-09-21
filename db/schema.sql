@@ -40,11 +40,16 @@ CREATE TABLE vehicle_state (
     engine_running      boolean,
 
     doors_locked        boolean,
-    -- Stato per singola apertura: {"driver_front": "open", "sunroof": "tilt", ...}
+    park_brake_engaged  boolean,
+    -- Stato per singola apertura: {"door_front_left": "open", "hood": "closed", ...}
     openings            jsonb NOT NULL DEFAULT '{}'::jsonb,
 
     tire_pressures      jsonb NOT NULL DEFAULT '{}'::jsonb,
-    warnings            jsonb NOT NULL DEFAULT '{}'::jsonb
+    warnings            jsonb NOT NULL DEFAULT '{}'::jsonb,
+
+    -- {"accel": 91, "const": 26, "freewheel": 0, "bonus_range_km": 1.6}
+    eco_score           jsonb NOT NULL DEFAULT '{}'::jsonb,
+    service_interval_days integer
 );
 
 -- ---------------------------------------------------------------------------

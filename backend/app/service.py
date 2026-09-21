@@ -7,6 +7,7 @@ veicolo e li passa al rilevatore di viaggi.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -213,6 +214,45 @@ class MercedesService:
         await self._trips.handle(vin, attrs, ts)
 
 
+    # Enum vehicle_events.proto (verificati con l'introspezione dei
+    # descriptor protobuf, non documentati altrove).
+_DOOR_STATUS = {0: "closed", 1: "open"}
+_DOOR_STATUS_OVERALL = {0: "open", 1: "closed", 3: "unknown"}
+_WINDOW_STATUS = {0: "intermediate", 1: "open", 2: "closed", 3: "airing"}
+_WINDOW_STATUS_OVERALL = {0: "open", 1: "closed", 2: "open", 3: "airing"}
+_HOOD_STATUS = {0: "closed", 1: "open"}
+
+_OPENING_FIELDS = {
+    "doorstatusfrontleft": ("door_front_left", _DOOR_STATUS),
+    "doorstatusfrontright": ("door_front_right", _DOOR_STATUS),
+    "doorstatusrearleft": ("door_rear_left", _DOOR_STATUS),
+    "doorstatusrearright": ("door_rear_right", _DOOR_STATUS),
+    "door_status_overall": ("doors_overall", _DOOR_STATUS_OVERALL),
+    "windowstatusfrontleft": ("window_front_left", _WINDOW_STATUS),
+    "windowstatusfrontright": ("window_front_right", _WINDOW_STATUS),
+    "windowstatusrearleft": ("window_rear_left", _WINDOW_STATUS),
+    "windowstatusrearright": ("window_rear_right", _WINDOW_STATUS),
+    "window_status_overall": ("windows_overall", _WINDOW_STATUS_OVERALL),
+    "engine_hood_status": ("hood", _HOOD_STATUS),
+}
+
+_TIRE_PRESSURE_FIELDS = {
+    "tirepressure_front_left": "front_left",
+    "tirepressure_front_right": "front_right",
+    "tirepressure_rear_left": "rear_left",
+    "tirepressure_rear_right": "rear_right",
+}
+
+# BoolAttribute: True quando la spia e' accesa (== c'e' qualcosa da segnalare).
+_WARNING_FIELDS = {
+    "warningbrakefluid": "brake_fluid",
+    "warningcoolantlevellow": "coolant_low",
+    "warningenginelight": "engine_light",
+    "warningwashwater": "washer_fluid",
+    "warningbrakeliningwear": "brake_pad_wear",
+}
+
+
 def _state_fields(attrs: dict[str, Any]) -> dict[str, Any]:
     """Traduce gli attributi noti in colonne di vehicle_state.
 
@@ -237,6 +277,48 @@ def _state_fields(attrs: dict[str, Any]) -> dict[str, Any]:
             fields["doors_locked"] = True
         elif lock in _UNLOCKED_STATES:
             fields["doors_locked"] = False
+    if (brake := attrs.get("parkbrakestatus")) is not None:
+        fields["park_brake_engaged"] = _int(brake) == 1
+
+    openings: dict[str, str] = {}
+    for attr_name, (key, labels) in _OPENING_FIELDS.items():
+        code = _int(attrs.get(attr_name))
+        if code is not None and code in labels:
+            openings[key] = labels[code]
+    if openings:
+        fields["openings"] = json.dumps(openings)
+
+    tire_pressures: dict[str, float] = {}
+    for attr_name, wheel in _TIRE_PRESSURE_FIELDS.items():
+        bar = _float(attrs.get(attr_name))
+        if bar is not None:
+            # value e' in centibar (verificato confrontando col displayValue
+            # gia' arrotondato che manda l'auto: 205 -> "2.0 bar").
+            tire_pressures[wheel] = round(bar / 100, 2)
+    if tire_pressures:
+        fields["tire_pressures"] = json.dumps(tire_pressures)
+
+    warnings: dict[str, bool] = {}
+    for attr_name, key in _WARNING_FIELDS.items():
+        if attr_name in attrs and isinstance(attrs[attr_name], bool):
+            warnings[key] = attrs[attr_name]
+    if warnings:
+        fields["warnings"] = json.dumps(warnings)
+
+    eco_score: dict[str, float] = {}
+    if (v := _float(attrs.get("ecoscoreaccel"))) is not None:
+        eco_score["accel"] = v
+    if (v := _float(attrs.get("ecoscoreconst"))) is not None:
+        eco_score["const"] = v
+    if (v := _float(attrs.get("ecoscorefreewhl"))) is not None:
+        eco_score["freewheel"] = v
+    if (v := _float(attrs.get("ecoscorebonusrange"))) is not None:
+        eco_score["bonus_range_km"] = v
+    if eco_score:
+        fields["eco_score"] = json.dumps(eco_score)
+
+    if (days := _int(attrs.get("serviceintervaldays"))) is not None:
+        fields["service_interval_days"] = days
 
     return fields
 

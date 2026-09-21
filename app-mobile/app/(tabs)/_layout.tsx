@@ -26,6 +26,7 @@ export default function TabsLayout() {
         name="trips"
         options={{
           title: "Viaggi",
+          headerShown: false,
           tabBarIcon: ({ color, size }) => <Ionicons name="map" size={size} color={color} />,
         }}
       />

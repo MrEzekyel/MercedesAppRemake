@@ -1,27 +1,33 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
+import type { ReactNode } from "react";
 import { ImageBackground, Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, spacing } from "../theme";
 import type { VehicleState } from "../types";
 
 interface Props {
   state: VehicleState | null;
+  /** Contenuto sovrapposto in basso sull'immagine (es. le StatTile). */
+  children?: ReactNode;
 }
 
 /**
- * Scena fotografica a piena pagina, come i render studio Mercedes: non una
- * card fra le altre. Usa lo shooting professionale vero dell'auto (vista
- * frontale qui; il profilo e' in Viaggi, il retro nel dettaglio veicolo).
- * Toccare l'auto porta al dettaglio (stato completo + comandi).
+ * Scena fotografica a TUTTO schermo, come i render studio Mercedes: non una
+ * card fra le altre, riempie l'intera schermata cosi' l'auto resta al
+ * centro invece che schiacciata in alto. Leggero zoom sull'immagine per
+ * eliminare il bordo/le tende visibili ai lati dello scatto originale.
+ * Usa lo shooting professionale vero dell'auto (vista frontale qui; il
+ * profilo e' in Viaggi, il retro nel dettaglio veicolo). Toccare l'auto
+ * porta al dettaglio (stato completo + comandi).
  */
-export function VehicleHeroCard({ state }: Props) {
+export function VehicleHeroCard({ state, children }: Props) {
   const locked = state?.doors_locked;
   const lockLabel =
     locked === null || locked === undefined ? "Stato sconosciuto" : locked ? "Chiusa" : "Aperta";
 
   return (
-    <Pressable onPress={() => router.push("/vehicle-detail")}>
+    <Pressable onPress={() => router.push("/vehicle-detail")} style={styles.flexFill}>
       <ImageBackground
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         source={require("../../assets/vehicle/front.jpg")}
@@ -29,8 +35,8 @@ export function VehicleHeroCard({ state }: Props) {
         imageStyle={styles.heroImage}
       >
         <LinearGradient
-          colors={["transparent", "rgba(6,9,16,0.55)", colors.background]}
-          locations={[0, 0.55, 1]}
+          colors={["transparent", "rgba(6,9,16,0.5)", colors.background]}
+          locations={[0, 0.62, 1]}
           style={styles.overlay}
         />
 
@@ -61,6 +67,8 @@ export function VehicleHeroCard({ state }: Props) {
             )}
           </View>
         </View>
+
+        {children && <View style={styles.overlayContent}>{children}</View>}
       </ImageBackground>
     </Pressable>
   );
@@ -76,8 +84,9 @@ function timeAgo(iso: string): string {
 }
 
 const styles = StyleSheet.create({
-  hero: { width: "100%", height: 560 },
-  heroImage: { resizeMode: "cover" },
+  flexFill: { flex: 1 },
+  hero: { flex: 1, width: "100%" },
+  heroImage: { resizeMode: "cover", transform: [{ scale: 1.09 }] },
   overlay: { ...StyleSheet.absoluteFillObject },
   headerRow: {
     flexDirection: "row",
@@ -112,4 +121,12 @@ const styles = StyleSheet.create({
   statusRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs, marginTop: spacing.xs },
   statusText: { fontSize: 13, fontWeight: "600" },
   statusMuted: { fontSize: 13, color: colors.textTertiary },
+  overlayContent: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.xl,
+  },
 });

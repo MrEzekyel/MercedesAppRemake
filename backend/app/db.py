@@ -40,6 +40,12 @@ class Database:
             vin,
         )
 
+    # Colonne jsonb che raccolgono piu' segnali (es. openings ha una chiave
+    # per porta): un evento tipico ne aggiorna solo una parte, quindi vanno
+    # fuse con quel che c'e' gia' invece di sovrascrivere il blob intero -
+    # altrimenti ogni update cancellerebbe i valori delle altre chiavi.
+    _MERGE_JSON_COLUMNS = {"openings", "tire_pressures", "warnings", "eco_score"}
+
     async def update_state(self, vin: str, fields: dict[str, Any]) -> None:
         """Aggiorna solo gli attributi presenti nell'evento.
 
@@ -52,7 +58,11 @@ class Database:
         columns = list(fields)
         values = [fields[c] for c in columns]
         placeholders = ", ".join(f"${i + 2}" for i in range(len(columns)))
-        assignments = ", ".join(f"{c} = EXCLUDED.{c}" for c in columns)
+        assignments = ", ".join(
+            f"{c} = vehicle_state.{c} || EXCLUDED.{c}" if c in self._MERGE_JSON_COLUMNS
+            else f"{c} = EXCLUDED.{c}"
+            for c in columns
+        )
 
         await self.pool.execute(
             f"""
@@ -105,8 +115,9 @@ class Database:
                    ST_X(s.position::geometry) AS longitude,
                    s.heading, s.position_updated_at, s.odometer_km,
                    s.fuel_level_pct, s.range_km, s.ignition_state,
-                   s.engine_running, s.doors_locked, s.openings,
-                   s.tire_pressures, s.warnings
+                   s.engine_running, s.doors_locked, s.park_brake_engaged,
+                   s.openings, s.tire_pressures, s.warnings, s.eco_score,
+                   s.service_interval_days
             FROM vehicle v LEFT JOIN vehicle_state s USING (vin)
             WHERE $1::text IS NULL OR v.vin = $1
             """,
@@ -345,6 +356,6 @@ def _row_to_dict(row: asyncpg.Record) -> dict[str, Any]:
         if isinstance(value, Decimal):
             out[key] = float(value)
         # asyncpg restituisce jsonb come stringa se non e' registrato un codec.
-        elif isinstance(value, str) and key in {"openings", "tire_pressures", "warnings", "params"}:
+        elif isinstance(value, str) and key in {"openings", "tire_pressures", "warnings", "eco_score", "params"}:
             out[key] = json.loads(value)
     return out

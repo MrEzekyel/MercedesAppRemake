@@ -44,22 +44,22 @@ export default function StatoScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.textSecondary} />
       }
     >
-      <VehicleHeroCard state={state} />
+      <View style={styles.fill}>
+        <VehicleHeroCard state={state}>
+          {error && (
+            <View style={styles.errorBanner}>
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          )}
 
-      <View style={styles.body}>
-        {error && (
-          <View style={styles.errorBanner}>
-            <Text style={styles.errorText}>{error}</Text>
+          <View style={styles.statsGrid}>
+            <StatTile icon="water-outline" label="Carburante" value={fmt(state?.fuel_level_pct)} unit="%" />
+            <StatTile icon="speedometer-outline" label="Autonomia" value={fmt(state?.range_km, 0)} unit="km" />
+            <StatTile icon="time-outline" label="Km totali" value={fmt(state?.odometer_km, 0)} unit="km" />
           </View>
-        )}
 
-        <View style={styles.statsGrid}>
-          <StatTile icon="water-outline" label="Carburante" value={fmt(state?.fuel_level_pct)} unit="%" />
-          <StatTile icon="speedometer-outline" label="Autonomia" value={fmt(state?.range_km, 0)} unit="km" />
-          <StatTile icon="time-outline" label="Km totali" value={fmt(state?.odometer_km, 0)} unit="km" />
-        </View>
-
-        <Text style={styles.hint}>Tocca l'auto per aprire lo stato completo e i comandi</Text>
+          <Text style={styles.hint}>Tocca l'auto per aprire lo stato completo e i comandi</Text>
+        </VehicleHeroCard>
       </View>
     </ScrollView>
   );
@@ -72,14 +72,15 @@ function fmt(value: number | null | undefined, decimals = 1): string {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { paddingBottom: spacing.xl },
-  body: { paddingHorizontal: spacing.md, gap: spacing.md, marginTop: -spacing.lg },
+  content: { flexGrow: 1 },
+  fill: { flex: 1 },
   errorBanner: {
     backgroundColor: "rgba(193,85,77,0.14)",
     borderRadius: 12,
     padding: spacing.sm,
+    marginBottom: spacing.sm,
   },
   errorText: { ...typography.caption, color: colors.danger },
   statsGrid: { flexDirection: "row", gap: spacing.sm },
-  hint: { ...typography.caption, color: colors.textTertiary, textAlign: "center" },
+  hint: { ...typography.caption, color: colors.textTertiary, textAlign: "center", marginTop: spacing.sm },
 });

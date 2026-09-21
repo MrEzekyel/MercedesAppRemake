@@ -1,7 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
-import { FlatList, Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { FlatList, ImageBackground, Pressable, StyleSheet, Text, View } from "react-native";
 import { api, ApiError } from "../../src/api";
 import { colors, radius, spacing, typography } from "../../src/theme";
 import type { TripSummary } from "../../src/types";
@@ -23,11 +24,35 @@ export default function ViaggiScreen() {
   );
 
   const header = (
-    <View style={styles.heroWrap}>
-      {/* eslint-disable-next-line @typescript-eslint/no-require-imports */}
-      <Image source={require("../../assets/vehicle/side.jpg")} style={styles.hero} resizeMode="cover" />
-      <Text style={styles.title}>Viaggi</Text>
-    </View>
+    <ImageBackground
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      source={require("../../assets/vehicle/side.jpg")}
+      style={styles.hero}
+      imageStyle={styles.heroImage}
+    >
+      <LinearGradient
+        colors={["transparent", "rgba(6,9,16,0.55)", colors.background]}
+        locations={[0, 0.65, 1]}
+        style={StyleSheet.absoluteFillObject}
+      />
+
+      <View style={styles.headerRow}>
+        <Ionicons name="menu-outline" size={20} color={colors.textPrimary} style={{ opacity: 0.85 }} />
+        <View style={styles.monogram}>
+          <View style={styles.monogramDot} />
+        </View>
+        <View style={styles.avatar}>
+          <Text style={styles.avatarLabel}>A</Text>
+        </View>
+      </View>
+
+      <View style={styles.titleBlock}>
+        <Text style={styles.title}>Viaggi</Text>
+        <Text style={styles.subtitle}>
+          {trips.length > 0 ? `${trips.length} viaggi registrati` : "Nessun viaggio ancora"}
+        </Text>
+      </View>
+    </ImageBackground>
   );
 
   if (error) {
@@ -110,16 +135,38 @@ function fmtDuration(seconds: number | null): string {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   list: { paddingBottom: spacing.xl, gap: spacing.sm },
-  heroWrap: { width: "100%", height: 260, marginBottom: spacing.md },
-  hero: { width: "100%", height: "100%" },
-  title: {
-    position: "absolute",
-    left: spacing.md,
-    bottom: spacing.md,
-    color: colors.textPrimary,
-    fontSize: 24,
-    fontWeight: "600",
+  hero: { width: "100%", height: 400, marginBottom: spacing.md },
+  heroImage: { resizeMode: "cover", transform: [{ scale: 1.09 }] },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: spacing.xl + spacing.md,
+    paddingHorizontal: spacing.md,
   },
+  monogram: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.35)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  monogramDot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: colors.accent },
+  avatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarLabel: { color: colors.textPrimary, fontSize: 11, fontWeight: "600" },
+  titleBlock: { alignItems: "center", marginTop: spacing.md },
+  title: { fontSize: 24, fontWeight: "600", color: colors.textPrimary },
+  subtitle: { fontSize: 13, color: colors.textSecondary, marginTop: 4 },
   centered: {
     flex: 1,
     backgroundColor: colors.background,

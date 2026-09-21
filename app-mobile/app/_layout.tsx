@@ -11,6 +11,7 @@ export default function RootLayout() {
           headerStyle: { backgroundColor: colors.background },
           headerTintColor: colors.textPrimary,
           headerShadowVisible: false,
+          headerBackTitle: "",
           contentStyle: { backgroundColor: colors.background },
         }}
       >

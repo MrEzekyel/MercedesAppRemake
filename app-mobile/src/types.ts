@@ -20,9 +20,12 @@ export interface VehicleState {
   ignition_state: string | null;
   engine_running: boolean | null;
   doors_locked: boolean | null;
+  park_brake_engaged: boolean | null;
   openings: Record<string, string>;
-  tire_pressures: Record<string, string>;
-  warnings: Record<string, string>;
+  tire_pressures: Record<string, number>;
+  warnings: Record<string, boolean>;
+  eco_score: Record<string, number>;
+  service_interval_days: number | null;
 }
 
 export interface TripSummary {
