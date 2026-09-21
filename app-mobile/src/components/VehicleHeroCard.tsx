@@ -10,12 +10,9 @@ interface Props {
 
 /**
  * Scena fotografica a piena pagina, come i render studio Mercedes: non una
- * card fra le altre. L'immagine va messa in
- * app-mobile/assets/vehicle/hero.png (foto reale dell'auto, verticale,
- * orientamento ritratto — va bene anche uno scatto con lo sfondo studio
- * gia' dentro, l'overlay sotto serve solo a leggere il testo). Il file qui
- * e' un placeholder a gradiente blu-notte: sostituiscilo mantenendo lo
- * stesso nome, senza toccare il codice.
+ * card fra le altre. Usa lo shooting professionale vero dell'auto
+ * (app-mobile/assets/vehicle/hero.jpg, profilo laterale; front.jpg e
+ * rear.jpg disponibili per altre schermate).
  */
 export function VehicleHeroCard({ state }: Props) {
   const locked = state?.doors_locked;
@@ -25,7 +22,7 @@ export function VehicleHeroCard({ state }: Props) {
   return (
     <ImageBackground
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      source={require("../../assets/vehicle/hero.png")}
+      source={require("../../assets/vehicle/hero.jpg")}
       style={styles.hero}
       imageStyle={styles.heroImage}
     >
