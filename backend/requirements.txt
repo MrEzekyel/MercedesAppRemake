@@ -1,0 +1,11 @@
+# Strato di protocollo importato (vedi vendor.sh)
+aiohttp>=3.9
+protobuf>=4.25
+voluptuous>=0.13
+
+# Applicazione
+fastapi>=0.110
+uvicorn[standard]>=0.29
+asyncpg>=0.29
+pydantic>=2.6
+pydantic-settings>=2.2
