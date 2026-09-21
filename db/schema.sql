@@ -159,6 +159,45 @@ CREATE TABLE command_log (
 CREATE INDEX command_log_vin_requested_idx ON command_log (vin, requested_at DESC);
 
 -- ---------------------------------------------------------------------------
+-- Rifornimenti
+--
+-- L'API Mercedes non sa quanto si e' speso o pagato: quello lo sa solo chi
+-- fa benzina. Il backend rileva un salto anomalo di fuel_level_pct e crea
+-- una riga 'pending' con una stima dei litri; l'utente la completa in app
+-- con spesa e prezzo, oppure la registra a mano da zero se il rilevamento
+-- se l'e' persa (es. servizio spento durante il pieno).
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE refuel (
+    id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    vin                   text NOT NULL REFERENCES vehicle(vin) ON DELETE CASCADE,
+    status                text NOT NULL DEFAULT 'pending'
+                          CHECK (status IN ('pending', 'confirmed')),
+
+    detected_at           timestamptz NOT NULL DEFAULT now(),
+    odometer_km           integer,
+    fuel_level_before_pct numeric(4,1),
+    fuel_level_after_pct  numeric(4,1),
+    -- Stima dal salto di livello, sovrascrivibile dall'utente con il valore
+    -- vero letto dalla colonnina.
+    liters_estimated      numeric(6,2),
+    liters                numeric(6,2),
+    cost_eur              numeric(7,2),
+    full_tank             boolean NOT NULL DEFAULT true,
+    position              geography(Point, 4326),
+    notes                 text,
+
+    confirmed_at          timestamptz
+);
+
+CREATE INDEX refuel_vin_detected_idx ON refuel (vin, detected_at DESC);
+
+CREATE VIEW refuel_stats AS
+SELECT *,
+    CASE WHEN liters > 0 THEN ROUND(cost_eur / liters, 3) END AS price_per_liter
+FROM refuel;
+
+-- ---------------------------------------------------------------------------
 -- Dispositivi per le notifiche push
 -- ---------------------------------------------------------------------------
 

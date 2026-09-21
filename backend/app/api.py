@@ -9,6 +9,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from pydantic import BaseModel
 
 from .config import settings
 from .db import Database
@@ -72,3 +73,36 @@ async def get_trip(trip_id: UUID) -> dict:
     if trip is None:
         raise HTTPException(404, "Viaggio non trovato")
     return trip
+
+
+class ConfirmRefuel(BaseModel):
+    liters: float
+    cost_eur: float | None = None
+    full_tank: bool = True
+    notes: str | None = None
+
+
+@app.get("/api/refuels", dependencies=[Depends(require_token)])
+async def list_refuels(
+    vin: str | None = None,
+    status: Annotated[str | None, Query(pattern="^(pending|confirmed)$")] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> list[dict]:
+    return await db.list_refuels(vin, status, limit, offset)
+
+
+@app.post("/api/refuels/{refuel_id}/confirm", dependencies=[Depends(require_token)])
+async def confirm_refuel(refuel_id: UUID, body: ConfirmRefuel) -> dict:
+    refuel = await db.confirm_refuel(refuel_id, body.liters, body.cost_eur, body.full_tank, body.notes)
+    if refuel is None:
+        raise HTTPException(404, "Rifornimento non trovato")
+    return refuel
+
+
+@app.delete("/api/refuels/{refuel_id}", dependencies=[Depends(require_token)])
+async def delete_refuel(refuel_id: UUID) -> dict[str, bool]:
+    deleted = await db.delete_refuel(refuel_id)
+    if not deleted:
+        raise HTTPException(404, "Rifornimento non trovato")
+    return {"deleted": True}

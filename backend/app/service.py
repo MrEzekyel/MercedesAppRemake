@@ -22,6 +22,7 @@ from .mbapi.errors import MBAuth2FAError, MBAuthError
 from .mbapi.oauth import Oauth
 from .mbapi.proto import client_pb2
 from .mbapi.websocket import Websocket
+from .refuel import RefuelDetector
 from .trips import TripRecorder
 
 LOGGER = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ class MercedesService:
     def __init__(self, db: Database) -> None:
         self._db = db
         self._trips = TripRecorder(db)
+        self._refuel = RefuelDetector(db)
         self._hass = HomeAssistant()
         self._ignition_states: dict[str, bool] = {}
         self._websocket: Websocket | None = None
@@ -114,6 +116,10 @@ class MercedesService:
 
         await self._db.ensure_vehicle(vin)
         await self._db.log_raw_event(vin, "vepUpdate", MessageToDict(update))
+
+        # Deve girare prima di update_state: legge il livello carburante
+        # precedente per confrontarlo col nuovo, e update_state lo sovrascrive.
+        await self._refuel.handle(vin, attrs, ts)
 
         state = _state_fields(attrs)
         if state:

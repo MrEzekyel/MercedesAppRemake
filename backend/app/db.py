@@ -79,6 +79,23 @@ class Database:
             ts,
         )
 
+    async def get_tank_capacity(self, vin: str) -> float | None:
+        value = await self.pool.fetchval(
+            "SELECT tank_capacity_l FROM vehicle WHERE vin = $1", vin
+        )
+        return float(value) if value is not None else None
+
+    async def get_fuel_level(self, vin: str) -> float | None:
+        """Ultimo livello carburante conosciuto, letto PRIMA di aggiornarlo.
+
+        Serve al rilevamento rifornimenti: il salto va misurato contro il
+        valore precedente, non contro se stesso dopo l'update.
+        """
+        value = await self.pool.fetchval(
+            "SELECT fuel_level_pct FROM vehicle_state WHERE vin = $1", vin
+        )
+        return float(value) if value is not None else None
+
     async def get_state(self, vin: str | None = None) -> list[dict[str, Any]]:
         rows = await self.pool.fetch(
             """
@@ -231,6 +248,64 @@ class Database:
         raw = trip.pop("route_geojson", None)
         trip["route"] = json.loads(raw)["coordinates"] if raw else []
         return trip
+
+
+    # -- rifornimenti -------------------------------------------------------
+
+    async def create_pending_refuel(
+        self, vin: str, ts: datetime, odometer: int | None,
+        before_pct: float, after_pct: float, liters_estimated: float | None,
+    ) -> UUID:
+        return await self.pool.fetchval(
+            """
+            INSERT INTO refuel (
+                vin, detected_at, odometer_km,
+                fuel_level_before_pct, fuel_level_after_pct, liters_estimated
+            ) VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id
+            """,
+            vin, ts, odometer, before_pct, after_pct, liters_estimated,
+        )
+
+    async def list_refuels(
+        self, vin: str | None, status: str | None, limit: int, offset: int
+    ) -> list[dict[str, Any]]:
+        rows = await self.pool.fetch(
+            """
+            SELECT id, vin, status, detected_at, odometer_km,
+                   fuel_level_before_pct, fuel_level_after_pct,
+                   liters_estimated, liters, cost_eur, price_per_liter,
+                   full_tank, notes, confirmed_at
+            FROM refuel_stats
+            WHERE ($1::text IS NULL OR vin = $1)
+              AND ($2::text IS NULL OR status = $2)
+            ORDER BY detected_at DESC
+            LIMIT $3 OFFSET $4
+            """,
+            vin, status, limit, offset,
+        )
+        return [_row_to_dict(r) for r in rows]
+
+    async def confirm_refuel(
+        self, refuel_id: UUID, liters: float, cost_eur: float | None,
+        full_tank: bool, notes: str | None,
+    ) -> dict[str, Any] | None:
+        row = await self.pool.fetchrow(
+            """
+            UPDATE refuel SET
+                status = 'confirmed', liters = $2, cost_eur = $3,
+                full_tank = $4, notes = $5, confirmed_at = now()
+            WHERE id = $1
+            RETURNING id
+            """,
+            refuel_id, liters, cost_eur, full_tank, notes,
+        )
+        return _row_to_dict(row) if row else None
+
+    async def delete_refuel(self, refuel_id: UUID) -> bool:
+        """Scarta un rifornimento rilevato per errore (es. sensore rumoroso)."""
+        result = await self.pool.execute("DELETE FROM refuel WHERE id = $1", refuel_id)
+        return result != "DELETE 0"
 
 
 def _row_to_dict(row: asyncpg.Record) -> dict[str, Any]:
