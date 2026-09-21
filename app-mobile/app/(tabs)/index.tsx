@@ -81,45 +81,47 @@ export default function StatoScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.textSecondary} />
       }
     >
-      {error && (
-        <View style={styles.errorBanner}>
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
-      )}
-
       <VehicleHeroCard state={state} />
 
-      <View style={styles.actionsRow}>
-        <QuickActionButton
-          icon="lock-closed"
-          label="Chiudi"
-          active={pending === "lock"}
-          onPress={() => runCommand("lock", api.lock)}
-        />
-        <QuickActionButton
-          icon="lock-open"
-          label="Apri"
-          active={pending === "unlock"}
-          onPress={() => runCommand("unlock", api.unlock)}
-        />
-        <QuickActionButton
-          icon="snow"
-          label="Clima"
-          active={pending === "climate"}
-          onPress={() => runCommand("climate", api.climateStart)}
-        />
-        <QuickActionButton
-          icon="flash"
-          label="Luci"
-          active={pending === "lights"}
-          onPress={() => runCommand("lights", api.flashLights)}
-        />
-      </View>
+      <View style={styles.body}>
+        {error && (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        )}
 
-      <View style={styles.statsGrid}>
-        <StatTile label="Carburante" value={fmt(state?.fuel_level_pct)} unit="%" />
-        <StatTile label="Autonomia" value={fmt(state?.range_km, 0)} unit="km" />
-        <StatTile label="Km totali" value={fmt(state?.odometer_km, 0)} unit="km" />
+        <View style={styles.statsGrid}>
+          <StatTile icon="water-outline" label="Carburante" value={fmt(state?.fuel_level_pct)} unit="%" />
+          <StatTile icon="speedometer-outline" label="Autonomia" value={fmt(state?.range_km, 0)} unit="km" />
+          <StatTile icon="time-outline" label="Km totali" value={fmt(state?.odometer_km, 0)} unit="km" />
+        </View>
+
+        <View style={styles.actionsRow}>
+          <QuickActionButton
+            icon="lock-closed"
+            label="Chiudi"
+            active={pending === "lock"}
+            onPress={() => runCommand("lock", api.lock)}
+          />
+          <QuickActionButton
+            icon="lock-open"
+            label="Apri"
+            active={pending === "unlock"}
+            onPress={() => runCommand("unlock", api.unlock)}
+          />
+          <QuickActionButton
+            icon="snow"
+            label="Clima"
+            active={pending === "climate"}
+            onPress={() => runCommand("climate", api.climateStart)}
+          />
+          <QuickActionButton
+            icon="flash"
+            label="Luci"
+            active={pending === "lights"}
+            onPress={() => runCommand("lights", api.flashLights)}
+          />
+        </View>
       </View>
     </ScrollView>
   );
@@ -132,14 +134,14 @@ function fmt(value: number | null | undefined, decimals = 1): string {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { paddingHorizontal: spacing.md, paddingBottom: spacing.xl, gap: spacing.lg },
+  content: { paddingBottom: spacing.xl },
+  body: { paddingHorizontal: spacing.md, gap: spacing.lg, marginTop: -spacing.lg },
   errorBanner: {
-    backgroundColor: "rgba(255,69,58,0.12)",
+    backgroundColor: "rgba(193,85,77,0.14)",
     borderRadius: 12,
     padding: spacing.sm,
-    marginTop: spacing.sm,
   },
   errorText: { ...typography.caption, color: colors.danger },
-  actionsRow: { flexDirection: "row", justifyContent: "space-around" },
+  actionsRow: { flexDirection: "row", gap: spacing.sm },
   statsGrid: { flexDirection: "row", gap: spacing.sm },
 });

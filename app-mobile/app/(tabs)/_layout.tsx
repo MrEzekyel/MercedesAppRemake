@@ -18,6 +18,7 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: "Stato",
+          headerShown: false,
           tabBarIcon: ({ color, size }) => <Ionicons name="car" size={size} color={color} />,
         }}
       />

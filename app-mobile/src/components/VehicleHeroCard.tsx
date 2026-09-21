@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { StyleSheet, Text, View } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { ImageBackground, StyleSheet, Text, View } from "react-native";
 import { colors, spacing, typography } from "../theme";
 import type { VehicleState } from "../types";
 
@@ -8,45 +9,60 @@ interface Props {
 }
 
 /**
- * Nessuna telemetria in tempo reale, nessuna silhouette 3D che ruota:
- * quello lo fa Tesla perche' ha i sensori per animarla davvero. Qui
- * l'onesta' conta piu' dell'effetto - lo stato di chiusura ben leggibile,
- * e i dati veri sotto.
- *
- * L'icona sotto e' un segnaposto: non ho potuto generare una foto vera
- * della W177 da qui. Per sostituirla, metti un file in
- * app-mobile/assets/car-w177.png (silhouette dall'alto, sfondo trasparente
- * come nell'app Tesla) e cambia questo blocco in
- * <Image source={require("../../assets/car-w177.png")} style={styles.carImage} resizeMode="contain" />
+ * Scena fotografica a piena pagina, come i render studio Mercedes: non una
+ * card fra le altre. L'immagine va messa in
+ * app-mobile/assets/vehicle/hero.png (foto reale dell'auto, verticale,
+ * orientamento ritratto — va bene anche uno scatto con lo sfondo studio
+ * gia' dentro, l'overlay sotto serve solo a leggere il testo). Il file qui
+ * e' un placeholder a gradiente blu-notte: sostituiscilo mantenendo lo
+ * stesso nome, senza toccare il codice.
  */
 export function VehicleHeroCard({ state }: Props) {
   const locked = state?.doors_locked;
-  const lockLabel = locked === null || locked === undefined
-    ? "Stato sconosciuto"
-    : locked ? "Chiusa" : "Aperta";
+  const lockLabel =
+    locked === null || locked === undefined ? "Stato sconosciuto" : locked ? "Chiusa" : "Aperta";
 
   return (
-    <View style={styles.card}>
-      <Text style={styles.name}>{state?.display_name ?? "Mercedes"}</Text>
+    <ImageBackground
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      source={require("../../assets/vehicle/hero.png")}
+      style={styles.hero}
+      imageStyle={styles.heroImage}
+    >
+      <LinearGradient
+        colors={["transparent", "rgba(6,9,16,0.55)", colors.background]}
+        locations={[0, 0.55, 1]}
+        style={styles.overlay}
+      />
 
-      <View style={styles.carPlaceholder}>
-        <Ionicons name="car-sport-outline" size={96} color={colors.textTertiary} />
+      <View style={styles.headerRow}>
+        <Ionicons name="menu-outline" size={20} color={colors.textPrimary} style={{ opacity: 0.85 }} />
+        <View style={styles.monogram}>
+          <View style={styles.monogramDot} />
+        </View>
+        <View style={styles.avatar}>
+          <Text style={styles.avatarLabel}>A</Text>
+        </View>
       </View>
 
-      <View style={styles.statusRow}>
-        <Ionicons
-          name={locked ? "lock-closed" : "lock-open"}
-          size={16}
-          color={locked ? colors.locked : colors.unlocked}
-        />
-        <Text style={[styles.statusText, { color: locked ? colors.locked : colors.unlocked }]}>
-          {lockLabel}
-        </Text>
-        {state?.updated_at && (
-          <Text style={styles.statusMuted}>· aggiornato {timeAgo(state.updated_at)}</Text>
-        )}
+      <View style={styles.greeting}>
+        <Text style={styles.greetingSmall}>Buongiorno, Andrea</Text>
+        <Text style={styles.name}>{state?.display_name ?? "Classe A"}</Text>
+        <View style={styles.statusRow}>
+          <Ionicons
+            name={locked ? "lock-closed" : "lock-open"}
+            size={13}
+            color={locked ? colors.accent : colors.unlocked}
+          />
+          <Text style={[styles.statusText, { color: locked ? colors.accent : colors.unlocked }]}>
+            {lockLabel}
+          </Text>
+          {state?.updated_at && (
+            <Text style={styles.statusMuted}>· aggiornato {timeAgo(state.updated_at)}</Text>
+          )}
+        </View>
       </View>
-    </View>
+    </ImageBackground>
   );
 }
 
@@ -60,16 +76,40 @@ function timeAgo(iso: string): string {
 }
 
 const styles = StyleSheet.create({
-  card: { alignItems: "center", paddingTop: spacing.lg, gap: spacing.sm },
-  name: { ...typography.title, color: colors.textPrimary },
-  carPlaceholder: {
-    width: "100%",
-    height: 180,
-    marginVertical: spacing.sm,
+  hero: { width: "100%", height: 560 },
+  heroImage: { resizeMode: "cover" },
+  overlay: { ...StyleSheet.absoluteFillObject },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: spacing.xl + spacing.md,
+    paddingHorizontal: spacing.md,
+  },
+  monogram: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.35)",
     alignItems: "center",
     justifyContent: "center",
   },
-  statusRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  monogramDot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: colors.accent },
+  avatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarLabel: { color: colors.textPrimary, fontSize: 11, fontWeight: "600" },
+  greeting: { paddingHorizontal: spacing.md, marginTop: spacing.md },
+  greetingSmall: { ...typography.caption, color: colors.textSecondary },
+  name: { fontSize: 26, fontWeight: "600", color: colors.textPrimary, marginTop: 2 },
+  statusRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs, marginTop: spacing.xs },
   statusText: { ...typography.caption, fontWeight: "600" },
   statusMuted: { ...typography.caption, color: colors.textTertiary },
 });

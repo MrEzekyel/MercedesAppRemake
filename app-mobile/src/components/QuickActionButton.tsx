@@ -20,10 +20,10 @@ export function QuickActionButton({ icon, label, onPress, active, comingSoon }: 
       disabled={comingSoon}
       style={({ pressed }) => [styles.wrapper, pressed && !comingSoon && styles.pressed]}
     >
-      <View style={[styles.circle, active && styles.circleActive]}>
+      <View style={[styles.badge, active && styles.badgeActive]}>
         <Ionicons
           name={icon}
-          size={24}
+          size={19}
           color={comingSoon ? colors.textTertiary : active ? colors.accent : colors.textPrimary}
         />
       </View>
@@ -34,20 +34,27 @@ export function QuickActionButton({ icon, label, onPress, active, comingSoon }: 
   );
 }
 
-const CIRCLE_SIZE = 56;
-
 const styles = StyleSheet.create({
-  wrapper: { alignItems: "center", gap: spacing.xs, width: 72 },
+  wrapper: { alignItems: "center", gap: spacing.xs, flex: 1 },
   pressed: { opacity: 0.6 },
-  circle: {
-    width: CIRCLE_SIZE,
-    height: CIRCLE_SIZE,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surfaceRaised,
+  badge: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
   },
-  circleActive: { backgroundColor: "rgba(58,160,255,0.15)" },
+  badgeActive: {
+    backgroundColor: colors.accentSoft,
+    borderColor: "rgba(79,143,209,0.5)",
+    shadowColor: colors.accent,
+    shadowOpacity: 0.6,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 0 },
+  },
   label: { ...typography.caption, color: colors.textSecondary, textAlign: "center" },
   labelDisabled: { color: colors.textTertiary },
 });

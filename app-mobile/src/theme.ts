@@ -1,26 +1,29 @@
 /**
- * Nero quasi puro, non grigio: e' la differenza tra un'app che sembra scura
- * e una che sembra spenta. Un solo accento (l'azzurro dello stato "in
- * marcia"/attivo), il resto e' bianco a opacita' decrescente per la
- * gerarchia, come nell'app Tesla.
+ * Blu notte profondo, non nero neutro: e' lo studio fotografico scuro dei
+ * render Mercedes (tende verticali, luce blu soffusa), non una dashboard
+ * SaaS. Un solo accento cromatico (l'azzurro), il resto e' bianco a
+ * opacita' decrescente per la gerarchia.
  */
 export const colors = {
-  background: "#000000",
-  surface: "#111214",
-  surfaceRaised: "#1c1d20",
-  border: "#2a2b2e",
+  background: "#060910",
+  backgroundBand: "#0B1220",
+  surface: "rgba(255,255,255,0.055)",
+  surfaceRaised: "rgba(255,255,255,0.08)",
+  border: "rgba(255,255,255,0.12)",
 
   textPrimary: "#ffffff",
-  textSecondary: "rgba(255,255,255,0.6)",
+  textSecondary: "rgba(255,255,255,0.62)",
   textTertiary: "rgba(255,255,255,0.38)",
 
-  accent: "#3aa0ff",
+  accent: "#4F8FD1",
+  accentGlow: "rgba(79,143,209,0.45)",
+  accentSoft: "rgba(79,143,209,0.14)",
   success: "#34c759",
-  warning: "#ffb020",
-  danger: "#ff453a",
+  warning: "#e0a63c",
+  danger: "#c1554d",
 
-  locked: "#34c759",
-  unlocked: "#ffb020",
+  locked: "#4F8FD1",
+  unlocked: "#c1554d",
 } as const;
 
 export const spacing = {
