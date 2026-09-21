@@ -18,6 +18,7 @@ from .db import Database
 from .ha_compat import ConfigEntry, HomeAssistant, async_create_clientsession
 from .events import IGNITION_ON, parse_update, position
 from .mbapi.app_version import AppVersionManager
+from .mbapi.errors import MBAuth2FAError, MBAuthError
 from .mbapi.oauth import Oauth
 from .mbapi.proto import client_pb2
 from .mbapi.websocket import Websocket
@@ -53,6 +54,23 @@ class MercedesService:
             config_entry=entry,
             app_version=app_version,
         )
+
+        # Il websocket si ri-autentica da solo dopo il primo login (es. sui
+        # 429), ma non ne esegue mai uno da zero: senza questo, prova a usare
+        # un token None e va in TypeError alla prima connessione.
+        if await oauth.async_get_cached_token() is None:
+            LOGGER.info("Nessun token salvato, eseguo il login...")
+            try:
+                await oauth.async_login_new(settings.mb_username, settings.mb_password)
+            except MBAuth2FAError as exc:
+                raise RuntimeError(
+                    "Login rifiutato: l'account ha l'autenticazione a due fattori "
+                    "attiva. Disattivala su Mercedes me (Profilo > Impostazioni > "
+                    "Sicurezza) o usa un account dedicato senza MFA."
+                ) from exc
+            except MBAuthError as exc:
+                raise RuntimeError(f"Login Mercedes fallito: {exc}") from exc
+            LOGGER.info("Login riuscito, token salvato in %s", settings.token_path)
 
         self._websocket = Websocket(
             hass=self._hass,
