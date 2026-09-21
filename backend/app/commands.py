@@ -17,6 +17,9 @@ UNLOCK = "unlock"
 CLIMATE_START = "climate_start"
 CLIMATE_STOP = "climate_stop"
 LIGHTS = "lights"
+HORN = "horn"
+WINDOWS_OPEN = "windows_open"
+WINDOWS_CLOSE = "windows_close"
 
 
 def build(command: str, vin: str, request_id: str, *, pin: str = "") -> bytes:
@@ -38,6 +41,13 @@ def build(command: str, vin: str, request_id: str, *, pin: str = "") -> bytes:
         # di cortesia, niente clacson.
         msg.commandRequest.sigpos_start.sigpos_type = 0
         msg.commandRequest.sigpos_start.light_type = 1
+    elif command == HORN:
+        # sigpos_type=HORN_ONLY (1): stesso comando dei fari, ma col clacson.
+        msg.commandRequest.sigpos_start.sigpos_type = 1
+    elif command == WINDOWS_OPEN:
+        msg.commandRequest.windows_open.pin = pin
+    elif command == WINDOWS_CLOSE:
+        msg.commandRequest.windows_close.SetInParent()
     else:
         raise ValueError(f"Comando sconosciuto: {command}")
 

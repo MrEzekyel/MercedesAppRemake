@@ -142,6 +142,21 @@ async def flash_lights(vin: str) -> dict:
     return await _send_command(vin, commands.LIGHTS)
 
 
+@app.post("/api/vehicles/{vin}/horn", dependencies=[Depends(require_token)])
+async def sound_horn(vin: str) -> dict:
+    return await _send_command(vin, commands.HORN)
+
+
+@app.post("/api/vehicles/{vin}/windows/open", dependencies=[Depends(require_token)])
+async def open_windows(vin: str) -> dict:
+    return await _send_command(vin, commands.WINDOWS_OPEN)
+
+
+@app.post("/api/vehicles/{vin}/windows/close", dependencies=[Depends(require_token)])
+async def close_windows(vin: str) -> dict:
+    return await _send_command(vin, commands.WINDOWS_CLOSE)
+
+
 @app.get("/api/commands/{command_id}", dependencies=[Depends(require_token)])
 async def get_command(command_id: UUID) -> dict:
     command = await db.get_command(command_id)

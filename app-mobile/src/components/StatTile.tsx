@@ -30,8 +30,6 @@ const styles = StyleSheet.create({
   tile: {
     flex: 1,
     backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
     borderRadius: radius.md,
     paddingVertical: spacing.sm + 2,
     paddingHorizontal: spacing.sm,

@@ -15,6 +15,8 @@ export default function RootLayout() {
         }}
       >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="vehicle-detail" options={{ headerShown: false }} />
+        <Stack.Screen name="vehicle-status" options={{ title: "Stato del veicolo" }} />
         <Stack.Screen name="trip/[id]" options={{ title: "Viaggio" }} />
         <Stack.Screen
           name="refuel/[id]"

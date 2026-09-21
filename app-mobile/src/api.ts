@@ -88,6 +88,15 @@ export const api = {
   flashLights: (vin: string): Promise<CommandResult> =>
     request(`/api/vehicles/${vin}/lights`, { method: "POST" }),
 
+  sound: (vin: string): Promise<CommandResult> =>
+    request(`/api/vehicles/${vin}/horn`, { method: "POST" }),
+
+  windowsOpen: (vin: string): Promise<CommandResult> =>
+    request(`/api/vehicles/${vin}/windows/open`, { method: "POST" }),
+
+  windowsClose: (vin: string): Promise<CommandResult> =>
+    request(`/api/vehicles/${vin}/windows/close`, { method: "POST" }),
+
   getCommand: (id: string): Promise<CommandStatus> => request(`/api/commands/${id}`),
 };
 

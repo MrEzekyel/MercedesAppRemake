@@ -1,7 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { ImageBackground, StyleSheet, Text, View } from "react-native";
-import { colors, spacing, typography } from "../theme";
+import { router } from "expo-router";
+import { ImageBackground, Pressable, StyleSheet, Text, View } from "react-native";
+import { colors, spacing } from "../theme";
 import type { VehicleState } from "../types";
 
 interface Props {
@@ -10,9 +11,9 @@ interface Props {
 
 /**
  * Scena fotografica a piena pagina, come i render studio Mercedes: non una
- * card fra le altre. Usa lo shooting professionale vero dell'auto
- * (app-mobile/assets/vehicle/hero.jpg, profilo laterale; front.jpg e
- * rear.jpg disponibili per altre schermate).
+ * card fra le altre. Usa lo shooting professionale vero dell'auto (vista
+ * frontale qui; il profilo e' in Viaggi, il retro nel dettaglio veicolo).
+ * Toccare l'auto porta al dettaglio (stato completo + comandi).
  */
 export function VehicleHeroCard({ state }: Props) {
   const locked = state?.doors_locked;
@@ -20,46 +21,48 @@ export function VehicleHeroCard({ state }: Props) {
     locked === null || locked === undefined ? "Stato sconosciuto" : locked ? "Chiusa" : "Aperta";
 
   return (
-    <ImageBackground
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      source={require("../../assets/vehicle/hero.jpg")}
-      style={styles.hero}
-      imageStyle={styles.heroImage}
-    >
-      <LinearGradient
-        colors={["transparent", "rgba(6,9,16,0.55)", colors.background]}
-        locations={[0, 0.55, 1]}
-        style={styles.overlay}
-      />
+    <Pressable onPress={() => router.push("/vehicle-detail")}>
+      <ImageBackground
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        source={require("../../assets/vehicle/front.jpg")}
+        style={styles.hero}
+        imageStyle={styles.heroImage}
+      >
+        <LinearGradient
+          colors={["transparent", "rgba(6,9,16,0.55)", colors.background]}
+          locations={[0, 0.55, 1]}
+          style={styles.overlay}
+        />
 
-      <View style={styles.headerRow}>
-        <Ionicons name="menu-outline" size={20} color={colors.textPrimary} style={{ opacity: 0.85 }} />
-        <View style={styles.monogram}>
-          <View style={styles.monogramDot} />
+        <View style={styles.headerRow}>
+          <Ionicons name="menu-outline" size={20} color={colors.textPrimary} style={{ opacity: 0.85 }} />
+          <View style={styles.monogram}>
+            <View style={styles.monogramDot} />
+          </View>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarLabel}>A</Text>
+          </View>
         </View>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarLabel}>A</Text>
-        </View>
-      </View>
 
-      <View style={styles.greeting}>
-        <Text style={styles.greetingSmall}>Buongiorno, Andrea</Text>
-        <Text style={styles.name}>{state?.display_name ?? "Classe A"}</Text>
-        <View style={styles.statusRow}>
-          <Ionicons
-            name={locked ? "lock-closed" : "lock-open"}
-            size={13}
-            color={locked ? colors.accent : colors.unlocked}
-          />
-          <Text style={[styles.statusText, { color: locked ? colors.accent : colors.unlocked }]}>
-            {lockLabel}
-          </Text>
-          {state?.updated_at && (
-            <Text style={styles.statusMuted}>· aggiornato {timeAgo(state.updated_at)}</Text>
-          )}
+        <View style={styles.greeting}>
+          <Text style={styles.greetingSmall}>Ciao Andrea</Text>
+          <Text style={styles.name}>{state?.display_name ?? "Classe A Premium"}</Text>
+          <View style={styles.statusRow}>
+            <Ionicons
+              name={locked ? "lock-closed" : "lock-open"}
+              size={13}
+              color={locked ? colors.accent : colors.unlocked}
+            />
+            <Text style={[styles.statusText, { color: locked ? colors.accent : colors.unlocked }]}>
+              {lockLabel}
+            </Text>
+            {state?.updated_at && (
+              <Text style={styles.statusMuted}>· aggiornato {timeAgo(state.updated_at)}</Text>
+            )}
+          </View>
         </View>
-      </View>
-    </ImageBackground>
+      </ImageBackground>
+    </Pressable>
   );
 }
 
@@ -103,10 +106,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   avatarLabel: { color: colors.textPrimary, fontSize: 11, fontWeight: "600" },
-  greeting: { paddingHorizontal: spacing.md, marginTop: spacing.md },
-  greetingSmall: { ...typography.caption, color: colors.textSecondary },
-  name: { fontSize: 26, fontWeight: "600", color: colors.textPrimary, marginTop: 2 },
+  greeting: { alignItems: "center", marginTop: spacing.md, paddingHorizontal: spacing.md },
+  greetingSmall: { fontSize: 15, color: colors.textSecondary },
+  name: { fontSize: 24, fontWeight: "600", color: colors.textPrimary, marginTop: 4 },
   statusRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs, marginTop: spacing.xs },
-  statusText: { ...typography.caption, fontWeight: "600" },
-  statusMuted: { ...typography.caption, color: colors.textTertiary },
+  statusText: { fontSize: 13, fontWeight: "600" },
+  statusMuted: { fontSize: 13, color: colors.textTertiary },
 });

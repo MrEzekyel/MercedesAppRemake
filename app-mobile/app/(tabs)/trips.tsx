@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
-import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { FlatList, Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { api, ApiError } from "../../src/api";
 import { colors, radius, spacing, typography } from "../../src/theme";
 import type { TripSummary } from "../../src/types";
@@ -22,6 +22,14 @@ export default function ViaggiScreen() {
     }, [])
   );
 
+  const header = (
+    <View style={styles.heroWrap}>
+      {/* eslint-disable-next-line @typescript-eslint/no-require-imports */}
+      <Image source={require("../../assets/vehicle/side.jpg")} style={styles.hero} resizeMode="cover" />
+      <Text style={styles.title}>Viaggi</Text>
+    </View>
+  );
+
   if (error) {
     return (
       <View style={styles.centered}>
@@ -32,9 +40,12 @@ export default function ViaggiScreen() {
 
   if (trips.length === 0) {
     return (
-      <View style={styles.centered}>
-        <Ionicons name="map-outline" size={40} color={colors.textTertiary} />
-        <Text style={styles.emptyText}>Nessun viaggio registrato ancora</Text>
+      <View style={styles.screen}>
+        {header}
+        <View style={styles.emptyBody}>
+          <Ionicons name="map-outline" size={40} color={colors.textTertiary} />
+          <Text style={styles.emptyText}>Nessun viaggio registrato ancora</Text>
+        </View>
       </View>
     );
   }
@@ -45,6 +56,7 @@ export default function ViaggiScreen() {
       contentContainerStyle={styles.list}
       data={trips}
       keyExtractor={(t) => t.id}
+      ListHeaderComponent={header}
       renderItem={({ item }) => <TripRow trip={item} />}
     />
   );
@@ -97,7 +109,17 @@ function fmtDuration(seconds: number | null): string {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  list: { padding: spacing.md, gap: spacing.sm },
+  list: { paddingBottom: spacing.xl, gap: spacing.sm },
+  heroWrap: { width: "100%", height: 260, marginBottom: spacing.md },
+  hero: { width: "100%", height: "100%" },
+  title: {
+    position: "absolute",
+    left: spacing.md,
+    bottom: spacing.md,
+    color: colors.textPrimary,
+    fontSize: 24,
+    fontWeight: "600",
+  },
   centered: {
     flex: 1,
     backgroundColor: colors.background,
@@ -106,6 +128,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.lg,
   },
+  emptyBody: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.sm },
   errorText: { ...typography.body, color: colors.danger, textAlign: "center" },
   emptyText: { ...typography.body, color: colors.textTertiary },
   row: {
@@ -114,6 +137,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: radius.md,
     padding: spacing.md,
+    marginHorizontal: spacing.md,
     gap: spacing.md,
   },
   rowPressed: { opacity: 0.7 },

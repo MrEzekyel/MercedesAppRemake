@@ -1,24 +1,16 @@
 import { useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
-import { api, ApiError, type CommandResult } from "../../src/api";
-import { QuickActionButton } from "../../src/components/QuickActionButton";
+import { api, ApiError } from "../../src/api";
 import { StatTile } from "../../src/components/StatTile";
 import { VehicleHeroCard } from "../../src/components/VehicleHeroCard";
 import { colors, spacing, typography } from "../../src/theme";
 import type { VehicleState } from "../../src/types";
 
-type CommandKey = "lock" | "unlock" | "climate" | "lights";
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 export default function StatoScreen() {
   const [state, setState] = useState<VehicleState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [pending, setPending] = useState<CommandKey | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -44,35 +36,6 @@ export default function StatoScreen() {
     setRefreshing(false);
   }, [load]);
 
-  const runCommand = useCallback(
-    async (key: CommandKey, action: (vin: string) => Promise<CommandResult>) => {
-      if (pending || !state?.vin) return;
-      setPending(key);
-      setError(null);
-      try {
-        const { command_id } = await action(state.vin);
-        // L'esito (successo/rifiuto/PIN sbagliato) arriva in modo asincrono
-        // dai server Mercedes: qui aspettiamo che command_log esca da
-        // "pending", con un timeout perche' un comando puo' anche non avere
-        // mai risposta (auto non raggiungibile).
-        for (let i = 0; i < 20; i++) {
-          const status = await api.getCommand(command_id);
-          if (status.status === "failed") {
-            throw new ApiError(0, status.error ?? "Comando rifiutato dall'auto");
-          }
-          if (status.status === "completed") break;
-          await sleep(1500);
-        }
-        await load();
-      } catch (e) {
-        setError(e instanceof ApiError ? `Comando: ${e.message}` : "Comando non riuscito");
-      } finally {
-        setPending(null);
-      }
-    },
-    [pending, state?.vin, load]
-  );
-
   return (
     <ScrollView
       style={styles.screen}
@@ -96,32 +59,7 @@ export default function StatoScreen() {
           <StatTile icon="time-outline" label="Km totali" value={fmt(state?.odometer_km, 0)} unit="km" />
         </View>
 
-        <View style={styles.actionsRow}>
-          <QuickActionButton
-            icon="lock-closed"
-            label="Chiudi"
-            active={pending === "lock"}
-            onPress={() => runCommand("lock", api.lock)}
-          />
-          <QuickActionButton
-            icon="lock-open"
-            label="Apri"
-            active={pending === "unlock"}
-            onPress={() => runCommand("unlock", api.unlock)}
-          />
-          <QuickActionButton
-            icon="snow"
-            label="Clima"
-            active={pending === "climate"}
-            onPress={() => runCommand("climate", api.climateStart)}
-          />
-          <QuickActionButton
-            icon="flash"
-            label="Luci"
-            active={pending === "lights"}
-            onPress={() => runCommand("lights", api.flashLights)}
-          />
-        </View>
+        <Text style={styles.hint}>Tocca l'auto per aprire lo stato completo e i comandi</Text>
       </View>
     </ScrollView>
   );
@@ -135,13 +73,13 @@ function fmt(value: number | null | undefined, decimals = 1): string {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   content: { paddingBottom: spacing.xl },
-  body: { paddingHorizontal: spacing.md, gap: spacing.lg, marginTop: -spacing.lg },
+  body: { paddingHorizontal: spacing.md, gap: spacing.md, marginTop: -spacing.lg },
   errorBanner: {
     backgroundColor: "rgba(193,85,77,0.14)",
     borderRadius: 12,
     padding: spacing.sm,
   },
   errorText: { ...typography.caption, color: colors.danger },
-  actionsRow: { flexDirection: "row", gap: spacing.sm },
   statsGrid: { flexDirection: "row", gap: spacing.sm },
+  hint: { ...typography.caption, color: colors.textTertiary, textAlign: "center" },
 });

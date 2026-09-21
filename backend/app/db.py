@@ -100,7 +100,7 @@ class Database:
     async def get_state(self, vin: str | None = None) -> list[dict[str, Any]]:
         rows = await self.pool.fetch(
             """
-            SELECT v.vin, v.display_name, s.updated_at,
+            SELECT v.vin, v.display_name, v.tank_capacity_l, s.updated_at,
                    ST_Y(s.position::geometry) AS latitude,
                    ST_X(s.position::geometry) AS longitude,
                    s.heading, s.position_updated_at, s.odometer_km,

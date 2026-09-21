@@ -8,6 +8,7 @@
 export interface VehicleState {
   vin: string;
   display_name: string;
+  tank_capacity_l: number | null;
   updated_at: string | null;
   latitude: number | null;
   longitude: number | null;

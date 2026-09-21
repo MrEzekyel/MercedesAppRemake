@@ -22,6 +22,22 @@ export default function RifornimentiScreen() {
 
   useFocusEffect(load);
 
+  const shortcut = (
+    <Pressable
+      onPress={() => router.push("/vehicle-status")}
+      style={({ pressed }) => [styles.shortcut, pressed && styles.rowPressed]}
+    >
+      <View style={styles.shortcutIcon}>
+        <Ionicons name="pulse-outline" size={18} color={colors.accent} />
+      </View>
+      <View style={styles.rowCenter}>
+        <Text style={styles.rowDate}>Stato del veicolo</Text>
+        <Text style={styles.rowMeta}>Gomme, porte, finestrini e altro</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+    </Pressable>
+  );
+
   if (error) {
     return (
       <View style={styles.centered}>
@@ -32,9 +48,12 @@ export default function RifornimentiScreen() {
 
   if (refuels.length === 0) {
     return (
-      <View style={styles.centered}>
-        <Ionicons name="water-outline" size={40} color={colors.textTertiary} />
-        <Text style={styles.emptyText}>Nessun rifornimento ancora</Text>
+      <View style={styles.screen}>
+        <View style={styles.list}>{shortcut}</View>
+        <View style={styles.emptyBody}>
+          <Ionicons name="water-outline" size={40} color={colors.textTertiary} />
+          <Text style={styles.emptyText}>Nessun rifornimento ancora</Text>
+        </View>
       </View>
     );
   }
@@ -45,6 +64,7 @@ export default function RifornimentiScreen() {
       contentContainerStyle={styles.list}
       data={refuels}
       keyExtractor={(r) => r.id}
+      ListHeaderComponent={shortcut}
       renderItem={({ item }) => <RefuelRow refuel={item} />}
     />
   );
@@ -120,4 +140,22 @@ const styles = StyleSheet.create({
   rowCenter: { flex: 1, gap: 2 },
   rowDate: { ...typography.body, color: colors.textPrimary, fontWeight: "600" },
   rowMeta: { ...typography.caption, color: colors.textTertiary },
+  emptyBody: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.sm },
+  shortcut: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    gap: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  shortcutIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: colors.accentSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 });
