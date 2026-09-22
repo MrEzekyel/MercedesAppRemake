@@ -147,14 +147,20 @@ export default function InfoVeicoloScreen() {
           resizeMode="cover"
         />
 
-        {/* Sfuma sopra e sotto: senza, la foto sembra un rettangolo incollato */}
+        {/*
+          Sfuma sopra e sotto, ma passando per il blu notte dello sfondo
+          fotografico invece che dritta al nero: il nero pieno mangiava una
+          fascia di immagine e spegneva le luci di studio.
+        */}
         <LinearGradient
-          colors={[colors.background, "transparent"]}
+          colors={[colors.background, "rgba(11,18,32,0.55)", "transparent"]}
+          locations={[0, 0.45, 1]}
           style={styles.fadeTop}
           pointerEvents="none"
         />
         <LinearGradient
-          colors={["transparent", colors.background]}
+          colors={["transparent", "rgba(11,18,32,0.55)", colors.background]}
+          locations={[0, 0.55, 1]}
           style={styles.fadeBottom}
           pointerEvents="none"
         />
@@ -453,8 +459,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   car: { width: STAGE_W, height: STAGE_H, transform: [{ scale: 1.18 }] },
-  fadeTop: { position: "absolute", left: 0, right: 0, top: 0, height: 70 },
-  fadeBottom: { position: "absolute", left: 0, right: 0, bottom: 0, height: 90 },
+  fadeTop: { position: "absolute", left: 0, right: 0, top: 0, height: 44 },
+  fadeBottom: { position: "absolute", left: 0, right: 0, bottom: 0, height: 58 },
   corner: {
     position: "absolute",
     minWidth: 92,

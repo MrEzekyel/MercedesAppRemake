@@ -110,7 +110,8 @@ class Database:
     async def get_state(self, vin: str | None = None) -> list[dict[str, Any]]:
         rows = await self.pool.fetch(
             """
-            SELECT v.vin, v.display_name, v.tank_capacity_l, s.updated_at,
+            SELECT v.vin, v.display_name, v.tank_capacity_l,
+                   v.fuel_price_eur_per_l, s.updated_at,
                    ST_Y(s.position::geometry) AS latitude,
                    ST_X(s.position::geometry) AS longitude,
                    s.heading, s.position_updated_at, s.odometer_km,
@@ -124,6 +125,19 @@ class Database:
             vin,
         )
         return [_row_to_dict(r) for r in rows]
+
+    async def set_fuel_price(self, vin: str, price: float | None) -> dict[str, Any] | None:
+        """None rimette il prezzo "automatico" (media dei rifornimenti)."""
+        row = await self.pool.fetchrow(
+            """
+            UPDATE vehicle SET fuel_price_eur_per_l = $2
+            WHERE vin = $1
+            RETURNING vin, fuel_price_eur_per_l
+            """,
+            vin,
+            price,
+        )
+        return _row_to_dict(row) if row is not None else None
 
     # -- eventi grezzi -----------------------------------------------------
 
@@ -232,7 +246,11 @@ class Database:
                    ST_Y(start_position::geometry) AS start_lat,
                    ST_X(start_position::geometry) AS start_lon,
                    ST_Y(end_position::geometry)   AS end_lat,
-                   ST_X(end_position::geometry)   AS end_lon
+                   ST_X(end_position::geometry)   AS end_lon,
+                   -- Tracciato semplificato: all'elenco serve la forma del
+                   -- percorso per l'anteprima, non la precisione al metro.
+                   -- ~50 m di tolleranza riduce di molto i punti trasmessi.
+                   ST_AsGeoJSON(ST_Simplify(route::geometry, 0.0005)) AS route_geojson
             FROM trip_stats
             WHERE ($1::text IS NULL OR vin = $1)
             ORDER BY started_at DESC
@@ -240,7 +258,13 @@ class Database:
             """,
             vin, limit, offset,
         )
-        return [_row_to_dict(r) for r in rows]
+        trips = []
+        for r in rows:
+            trip = _row_to_dict(r)
+            raw = trip.pop("route_geojson", None)
+            trip["route"] = json.loads(raw)["coordinates"] if raw else []
+            trips.append(trip)
+        return trips
 
     async def get_trip(self, trip_id: UUID) -> dict[str, Any] | None:
         row = await self.pool.fetchrow(

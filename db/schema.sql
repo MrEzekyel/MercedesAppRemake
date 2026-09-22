@@ -14,6 +14,9 @@ CREATE TABLE vehicle (
     model           text,
     -- Litri: serve per stimare l'autonomia e per convertire il livello % in litri.
     tank_capacity_l numeric(5,1),
+    -- Prezzo al litro per monetizzare i viaggi. Impostato dall'utente; se
+    -- NULL l'app ricava la media dai rifornimenti confermati (vedi 0003).
+    fuel_price_eur_per_l numeric(6,3),
     created_at      timestamptz NOT NULL DEFAULT now()
 );
 

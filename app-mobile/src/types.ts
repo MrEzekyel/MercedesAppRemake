@@ -9,6 +9,8 @@ export interface VehicleState {
   vin: string;
   display_name: string;
   tank_capacity_l: number | null;
+  /** Override dell'utente; se null si usa la media dei rifornimenti. */
+  fuel_price_eur_per_l: number | null;
   updated_at: string | null;
   latitude: number | null;
   longitude: number | null;
@@ -45,6 +47,8 @@ export interface TripSummary {
   start_lon: number | null;
   end_lat: number | null;
   end_lon: number | null;
+  /** Tracciato semplificato per l'anteprima: [longitudine, latitudine]. */
+  route: [number, number][];
 }
 
 export interface TripDetail extends Omit<TripSummary, "start_lat" | "start_lon" | "end_lat" | "end_lon"> {

@@ -54,6 +54,13 @@ export const api = {
 
   getTrip: (id: string): Promise<TripDetail> => request(`/api/trips/${id}`),
 
+  /** null rimette il prezzo automatico (media dei rifornimenti). */
+  setFuelPrice: (vin: string, price: number | null): Promise<{ fuel_price_eur_per_l: number | null }> =>
+    request(`/api/vehicles/${vin}/settings`, {
+      method: "PATCH",
+      body: JSON.stringify({ fuel_price_eur_per_l: price }),
+    }),
+
   listRefuels: (
     opts: { vin?: string; status?: "pending" | "confirmed"; limit?: number } = {}
   ): Promise<Refuel[]> => {

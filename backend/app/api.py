@@ -76,6 +76,23 @@ async def get_trip(trip_id: UUID) -> dict:
     return trip
 
 
+class VehicleSettings(BaseModel):
+    """None e' un valore valido: azzera l'override e torna alla media."""
+
+    fuel_price_eur_per_l: float | None = None
+
+
+@app.patch("/api/vehicles/{vin}/settings", dependencies=[Depends(require_token)])
+async def update_settings(vin: str, body: VehicleSettings) -> dict:
+    price = body.fuel_price_eur_per_l
+    if price is not None and not 0 < price < 10:
+        raise HTTPException(422, "Prezzo al litro fuori scala")
+    updated = await db.set_fuel_price(vin, price)
+    if updated is None:
+        raise HTTPException(404, "Veicolo non trovato")
+    return updated
+
+
 class ConfirmRefuel(BaseModel):
     liters: float
     cost_eur: float | None = None
