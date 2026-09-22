@@ -243,7 +243,6 @@ export const ChevronIcon = icon(({ color, strokeWidth }) => (
  */
 export const MercedesStarIcon = icon(({ color, strokeWidth }) => (
   <>
-    <Circle cx="12" cy="12" r="9.3" stroke={color} strokeWidth={strokeWidth} />
     <Line x1="12" y1="12" x2="12" y2="3.5" stroke={color} strokeWidth={strokeWidth} {...S} />
     <Line x1="12" y1="12" x2="19.36" y2="16.25" stroke={color} strokeWidth={strokeWidth} {...S} />
     <Line x1="12" y1="12" x2="4.64" y2="16.25" stroke={color} strokeWidth={strokeWidth} {...S} />

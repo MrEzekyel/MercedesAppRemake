@@ -6,7 +6,10 @@
     "orientation": "portrait",
     "scheme": "mbcompanion",
     "userInterfaceStyle": "dark",
-    "plugins": ["expo-router"],
+    "plugins": [
+      "expo-router",
+      "expo-video"
+    ],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "it.andreadecaro.mbcompanion",

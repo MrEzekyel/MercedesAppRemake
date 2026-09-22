@@ -4,6 +4,7 @@ import { ImageBackground, Pressable, StyleSheet, Text, View } from "react-native
 import { colors, spacing } from "../theme";
 import type { VehicleState } from "../types";
 import { AppHeader } from "./AppHeader";
+import { useCarTransition } from "./CarTransition";
 import { LockIcon, UnlockIcon } from "./icons";
 
 interface Props {
@@ -21,6 +22,7 @@ interface Props {
  * dettaglio (comandi + ultimo viaggio).
  */
 export function VehicleHeroCard({ state, children }: Props) {
+  const { playForward } = useCarTransition();
   const locked = state?.doors_locked;
   const lockLabel =
     locked === null || locked === undefined ? "Stato sconosciuto" : locked ? "Chiusa" : "Aperta";
@@ -28,7 +30,10 @@ export function VehicleHeroCard({ state, children }: Props) {
   const LockGlyph = locked ? LockIcon : UnlockIcon;
 
   return (
-    <Pressable onPress={() => router.push("/vehicle-detail")} style={styles.flexFill}>
+    <Pressable
+      onPress={() => playForward(() => router.push("/vehicle-detail"))}
+      style={styles.flexFill}
+    >
       <ImageBackground
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         source={require("../../assets/vehicle/front.jpg")}

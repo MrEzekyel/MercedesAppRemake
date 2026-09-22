@@ -25,7 +25,7 @@ export function AppHeader() {
       </Svg>
 
       <View style={styles.monogram}>
-        <MercedesStarIcon size={19} color="rgba(255,255,255,0.9)" strokeWidth={1.3} />
+        <MercedesStarIcon size={50} color="rgba(255,255,255,0.92)" strokeWidth={1.3} />
       </View>
 
       <View style={styles.avatar}>
@@ -42,12 +42,12 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: spacing.md,
   },
+  /**
+   * Niente piu' anello/badge intorno: solo la stella, piu' grande
+   * (almeno 2.5x) cosi' regge da sola come elemento centrale della riga
+   * invece che stare chiusa in un cerchietto di 30px.
+   */
   monogram: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.35)",
     alignItems: "center",
     justifyContent: "center",
   },

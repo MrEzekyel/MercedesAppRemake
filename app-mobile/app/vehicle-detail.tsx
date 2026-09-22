@@ -6,6 +6,7 @@ import { ImageBackground, Pressable, ScrollView, StyleSheet, Text, View } from "
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, ApiError, type CommandResult } from "../src/api";
 import { AppHeader } from "../src/components/AppHeader";
+import { useCarTransition } from "../src/components/CarTransition";
 import {
   ChevronIcon,
   ClimateIcon,
@@ -34,6 +35,7 @@ function sleep(ms: number): Promise<void> {
  */
 export default function VehicleDetailScreen() {
   const insets = useSafeAreaInsets();
+  const { playReverse } = useCarTransition();
   const [state, setState] = useState<VehicleState | null>(null);
   const [lastTrip, setLastTrip] = useState<TripSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -109,7 +111,7 @@ export default function VehicleDetailScreen() {
         </View>
 
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => playReverse(() => router.back())}
           style={[styles.backHit, { top: insets.top + spacing.sm + spacing.md + 44 }]}
           hitSlop={10}
         >
