@@ -82,7 +82,9 @@ export function CarTransitionProvider({ children }: { children: ReactNode }) {
   const [direction, setDirection] = useState<Direction>(null);
   const navTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const zoom = useRef(new Animated.Value(HOME_ZOOM)).current;
-  const overlayOpacity = useRef(new Animated.Value(1)).current;
+  // A riposo l'overlay e' montato ma invisibile (vedi il commento sul
+  // render): parte da 0, non da 1.
+  const overlayOpacity = useRef(new Animated.Value(0)).current;
   const contentOpacity = useRef(new Animated.Value(1)).current;
 
   const forwardPlayer = useVideoPlayer(FORWARD_SOURCE, (p) => {
@@ -98,14 +100,17 @@ export function CarTransitionProvider({ children }: { children: ReactNode }) {
     (which: Direction, player: typeof forwardPlayer, from: number, to: number, onDone: () => void) => {
       if (navTimer.current) clearTimeout(navTimer.current);
 
-      // replay() invece di "currentTime = 0" + play(): quest'ultimo e'
-      // un seek asincrono, e se il player era fermo sull'ultimo
-      // fotogramma di una riproduzione precedente, play() poteva partire
-      // prima che il seek fosse completato — un fotogramma dalla FINE
-      // del giro precedente lampeggiava per un istante all'inizio.
-      // replay() e' pensato apposta per "riparti dall'inizio" e lo fa in
-      // un solo passo affidabile.
+      // replay() riavvolge e basta ("Seeks the playback to the beginning"
+      // nei tipi di expo-video): NON fa ripartire la riproduzione. Da solo
+      // lasciava il player in pausa sul primo fotogramma — che essendo
+      // identico alla foto sotto, faceva sembrare che il video non ci
+      // fosse affatto. Serve comunque perche' riavvolge in un solo passo
+      // nativo, senza la corsa fra il seek asincrono di "currentTime = 0"
+      // e il play() (era quella a far lampeggiare un fotogramma della
+      // fine precedente all'inizio del giro nuovo); play() subito dopo e'
+      // quello che lo mette davvero in moto.
       player.replay();
+      player.play();
       setDirection(which);
 
       overlayOpacity.setValue(1);
@@ -157,22 +162,35 @@ export function CarTransitionProvider({ children }: { children: ReactNode }) {
   return (
     <CarTransitionContext.Provider value={{ playForward, playReverse, contentOpacity }}>
       {children}
-      {direction && (
-        <Animated.View
-          style={[
-            StyleSheet.absoluteFill,
-            { opacity: overlayOpacity, transform: [{ scale: zoom }] },
-          ]}
-          pointerEvents="auto"
-        >
-          <VideoView
-            player={direction === "forward" ? forwardPlayer : reversePlayer}
-            style={StyleSheet.absoluteFill}
-            contentFit="cover"
-            nativeControls={false}
-          />
-        </Animated.View>
-      )}
+      {/*
+        Le due VideoView restano montate sempre, invisibili a riposo
+        (overlayOpacity 0) invece di essere create al momento del tocco:
+        creare la view nativa e agganciarla al player costa qualche
+        decina di millisecondi, che su una clip da 750ms si mangiava i
+        primi fotogrammi del giro. pointerEvents "none" a riposo lascia
+        passare i tocchi alle schermate sotto.
+      */}
+      <Animated.View
+        style={[StyleSheet.absoluteFill, { opacity: overlayOpacity, transform: [{ scale: zoom }] }]}
+        pointerEvents={direction ? "auto" : "none"}
+      >
+        <VideoView
+          player={forwardPlayer}
+          style={[StyleSheet.absoluteFill, direction === "forward" ? null : styles.hidden]}
+          contentFit="cover"
+          nativeControls={false}
+        />
+        <VideoView
+          player={reversePlayer}
+          style={[StyleSheet.absoluteFill, direction === "reverse" ? null : styles.hidden]}
+          contentFit="cover"
+          nativeControls={false}
+        />
+      </Animated.View>
     </CarTransitionContext.Provider>
   );
 }
+
+const styles = StyleSheet.create({
+  hidden: { opacity: 0 },
+});
