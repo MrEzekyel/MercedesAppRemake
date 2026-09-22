@@ -62,13 +62,10 @@ const REVERSE_SOURCE = require("../../assets/vehicle/detail-reverse.mp4");
 // comando ffmpeg usato per generarli).
 const CLIP_DURATION_MS = 750;
 
-// Ultima porzione del video durante cui video e contenuto fanno il cambio:
-// il video sfuma a 0 mentre la UI della schermata di arrivo sfuma a 1, in
-// parallelo, cosi' l'una prende il posto dell'altro con un "banale fade"
-// invece di un pop improvviso. Va tenuta corta rispetto ai 750ms totali:
-// troppo lunga e il video sembra fermarsi prima della fine.
-const FADE_MS = 260;
-const NAV_AT_MS = CLIP_DURATION_MS - FADE_MS;
+// Durata della dissolvenza della UI (testo, pannello comandi, statistiche)
+// DOPO che il video e' sparito — non del video stesso, che non sfuma mai
+// (vedi il commento su overlayOpacity piu' sotto).
+const FADE_MS = 220;
 
 // Le due schermate statiche zoomano la foto di una quantita' leggermente
 // diversa (VehicleHeroCard.tsx usa 1.09, vehicle-detail.tsx usa 1.06): il
@@ -80,10 +77,18 @@ const DETAIL_ZOOM = 1.06;
 
 export function CarTransitionProvider({ children }: { children: ReactNode }) {
   const [direction, setDirection] = useState<Direction>(null);
-  const navTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const endTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const zoom = useRef(new Animated.Value(HOME_ZOOM)).current;
-  // A riposo l'overlay e' montato ma invisibile (vedi il commento sul
-  // render): parte da 0, non da 1.
+  // Non sfuma MAI: o e' invisibile a riposo (0, video smontato/coperto)
+  // o e' del tutto opaca per l'intera durata della clip (1). Il video e
+  // la foto sotto sono lo stesso identico fotogramma, quindi passare
+  // dall'uno all'altra di scatto (setDirection(null), niente Animated fra
+  // mezzo) e' un taglio invisibile — mentre sfumare l'opacita' del video
+  // lascia vedere in trasparenza quello che c'e' dietro nel frattempo
+  // (spesso ancora la schermata di partenza, non quella di arrivo: e' il
+  // lampo che si vedeva prima). La dissolvenza vera sta solo su
+  // contentOpacity, che e' testo sopra una foto gia' ferma, mai sopra un
+  // taglio fra due immagini diverse.
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   const contentOpacity = useRef(new Animated.Value(1)).current;
 
@@ -98,21 +103,17 @@ export function CarTransitionProvider({ children }: { children: ReactNode }) {
 
   const run = useCallback(
     (which: Direction, player: typeof forwardPlayer, from: number, to: number, onDone: () => void) => {
-      if (navTimer.current) clearTimeout(navTimer.current);
+      if (endTimer.current) clearTimeout(endTimer.current);
 
       // replay() riavvolge e basta ("Seeks the playback to the beginning"
-      // nei tipi di expo-video): NON fa ripartire la riproduzione. Da solo
-      // lasciava il player in pausa sul primo fotogramma — che essendo
-      // identico alla foto sotto, faceva sembrare che il video non ci
-      // fosse affatto. Serve comunque perche' riavvolge in un solo passo
-      // nativo, senza la corsa fra il seek asincrono di "currentTime = 0"
-      // e il play() (era quella a far lampeggiare un fotogramma della
-      // fine precedente all'inizio del giro nuovo); play() subito dopo e'
-      // quello che lo mette davvero in moto.
+      // nei tipi di expo-video): NON fa ripartire la riproduzione. play()
+      // subito dopo e' quello che lo mette davvero in moto.
       player.replay();
       player.play();
       setDirection(which);
 
+      // Opaco per l'intera durata della clip, mai sfumato (vedi il
+      // commento sulla dichiarazione di overlayOpacity).
       overlayOpacity.setValue(1);
       contentOpacity.setValue(0);
       zoom.setValue(from);
@@ -123,28 +124,28 @@ export function CarTransitionProvider({ children }: { children: ReactNode }) {
         useNativeDriver: true,
       }).start();
 
-      // Il cambio schermata e la dissolvenza incrociata partono insieme,
-      // a tempo (non aspettando l'evento "fine riproduzione" del player,
-      // troppo vicino alla soglia di percezione su una clip da 750ms per
-      // fidarsene): la nuova schermata ha tutto il tempo di FADE_MS per
-      // montarsi sotto mentre il video sta ancora sfumando sopra di lei.
-      navTimer.current = setTimeout(() => {
-        onDone();
-        Animated.parallel([
-          Animated.timing(overlayOpacity, {
-            toValue: 0,
-            duration: FADE_MS,
-            easing: Easing.linear,
-            useNativeDriver: true,
-          }),
-          Animated.timing(contentOpacity, {
-            toValue: 1,
-            duration: FADE_MS,
-            easing: Easing.linear,
-            useNativeDriver: true,
-          }),
-        ]).start(() => setDirection(null));
-      }, NAV_AT_MS);
+      // Si naviga SUBITO, non alla fine: il video resta opaco per tutta
+      // la sua durata e copre lo schermo, quindi la schermata di arrivo
+      // ha l'intera durata della clip (non solo l'ultima fetta) per
+      // montarsi sotto senza che si veda nulla. E' quello che evita il
+      // lampo della schermata di partenza: prima si navigava tardi e si
+      // sfumava subito, lasciando una finestra in cui il video era
+      // semi-trasparente ma la schermata di arrivo non era ancora pronta.
+      onDone();
+
+      // Alla fine esatta della clip il video sparisce di colpo — un
+      // taglio, non una dissolvenza, perche' e' lo stesso fotogramma
+      // della foto sotto — e la UI della schermata di arrivo (sola, non
+      // l'immagine) comincia a comparire.
+      endTimer.current = setTimeout(() => {
+        setDirection(null);
+        Animated.timing(contentOpacity, {
+          toValue: 1,
+          duration: FADE_MS,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }).start();
+      }, CLIP_DURATION_MS);
     },
     [zoom, overlayOpacity, contentOpacity]
   );
