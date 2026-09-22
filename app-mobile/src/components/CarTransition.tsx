@@ -15,7 +15,7 @@
  * mentre un player ricarica una nuova sorgente, il video giusto e' sempre
  * gia' pronto a partire.
  */
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Animated, Easing, StyleSheet } from "react-native";
 import { useVideoPlayer, VideoView } from "expo-video";
@@ -23,11 +23,24 @@ import { useVideoPlayer, VideoView } from "expo-video";
 type Direction = "forward" | "reverse" | null;
 
 interface CarTransitionApi {
-  /** Home -> dettaglio. onDone naviga: il video resta fermo sull'ultimo
-   * fotogramma finche' la schermata di arrivo non e' montata sotto. */
+  /** Home -> dettaglio. */
   playForward: (onDone: () => void) => void;
   /** Dettaglio -> Home, stesso principio al contrario. */
   playReverse: (onDone: () => void) => void;
+  /**
+   * Opacita' condivisa per il contenuto "informativo" sovrapposto alla
+   * foto/video (testo, pannello comandi, statistiche) — non per la
+   * fotografia stessa, che sta gia' sotto ed e' sempre visibile. Resta a 1
+   * fuori da una transizione; viene azzerata all'inizio di un tocco
+   * sull'auto e riportata a 1 in dissolvenza mentre il video sfuma,
+   * cosi' la UI della schermata di arrivo non "compare di scatto" ma si
+   * materializza insieme allo svanire del video. E' condivisa (un solo
+   * valore, non uno per schermata) perche' a ogni transizione solo la
+   * schermata di ARRIVO deve restare invisibile finche' non tocca a lei;
+   * quella di partenza e' comunque coperta dal video sopra, quindi non
+   * importa se anche lei e' agganciata allo stesso valore.
+   */
+  contentOpacity: Animated.Value;
 }
 
 const CarTransitionContext = createContext<CarTransitionApi | null>(null);
@@ -45,18 +58,17 @@ const FORWARD_SOURCE = require("../../assets/vehicle/detail-forward.mp4");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const REVERSE_SOURCE = require("../../assets/vehicle/detail-reverse.mp4");
 
-// Il video resta fermo sull'ultimo fotogramma questo tempo dopo la fine,
-// mentre sotto si monta la schermata di arrivo: e' identico all'ultimo
-// fotogramma (front.jpg/rear.jpg sono gli stessi sfondi), quindi il cambio
-// e' invisibile. Troppo corto e si rischia un lampo della vecchia
-// schermata; troppo lungo e si sente il ritardo.
-const HANDOFF_DELAY_MS = 70;
-
 // Deve combaciare con la durata reale dei due file mp4 (0,75s, vedi il
-// comando ffmpeg usato per generarli): l'animazione dello zoom e' basata
-// sul tempo, non sul player, quindi se la durata del video cambia questo
-// valore va aggiornato insieme.
+// comando ffmpeg usato per generarli).
 const CLIP_DURATION_MS = 750;
+
+// Ultima porzione del video durante cui video e contenuto fanno il cambio:
+// il video sfuma a 0 mentre la UI della schermata di arrivo sfuma a 1, in
+// parallelo, cosi' l'una prende il posto dell'altro con un "banale fade"
+// invece di un pop improvviso. Va tenuta corta rispetto ai 750ms totali:
+// troppo lunga e il video sembra fermarsi prima della fine.
+const FADE_MS = 260;
+const NAV_AT_MS = CLIP_DURATION_MS - FADE_MS;
 
 // Le due schermate statiche zoomano la foto di una quantita' leggermente
 // diversa (VehicleHeroCard.tsx usa 1.09, vehicle-detail.tsx usa 1.06): il
@@ -68,9 +80,10 @@ const DETAIL_ZOOM = 1.06;
 
 export function CarTransitionProvider({ children }: { children: ReactNode }) {
   const [direction, setDirection] = useState<Direction>(null);
-  const onDoneRef = useRef<(() => void) | null>(null);
-  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const navTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const zoom = useRef(new Animated.Value(HOME_ZOOM)).current;
+  const overlayOpacity = useRef(new Animated.Value(1)).current;
+  const contentOpacity = useRef(new Animated.Value(1)).current;
 
   const forwardPlayer = useVideoPlayer(FORWARD_SOURCE, (p) => {
     p.loop = false;
@@ -81,73 +94,75 @@ export function CarTransitionProvider({ children }: { children: ReactNode }) {
     p.muted = true;
   });
 
-  const finish = useCallback(() => {
-    onDoneRef.current?.();
-    onDoneRef.current = null;
-    hideTimer.current = setTimeout(() => setDirection(null), HANDOFF_DELAY_MS);
-  }, []);
+  const run = useCallback(
+    (which: Direction, player: typeof forwardPlayer, from: number, to: number, onDone: () => void) => {
+      if (navTimer.current) clearTimeout(navTimer.current);
 
-  useEffect(() => {
-    const sub = forwardPlayer.addListener("playToEnd", () => {
-      if (direction === "forward") finish();
-    });
-    return () => sub.remove();
-  }, [forwardPlayer, direction, finish]);
+      // replay() invece di "currentTime = 0" + play(): quest'ultimo e'
+      // un seek asincrono, e se il player era fermo sull'ultimo
+      // fotogramma di una riproduzione precedente, play() poteva partire
+      // prima che il seek fosse completato — un fotogramma dalla FINE
+      // del giro precedente lampeggiava per un istante all'inizio.
+      // replay() e' pensato apposta per "riparti dall'inizio" e lo fa in
+      // un solo passo affidabile.
+      player.replay();
+      setDirection(which);
 
-  useEffect(() => {
-    const sub = reversePlayer.addListener("playToEnd", () => {
-      if (direction === "reverse") finish();
-    });
-    return () => sub.remove();
-  }, [reversePlayer, direction, finish]);
+      overlayOpacity.setValue(1);
+      contentOpacity.setValue(0);
+      zoom.setValue(from);
+      Animated.timing(zoom, {
+        toValue: to,
+        duration: CLIP_DURATION_MS,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }).start();
 
-  useEffect(
-    () => () => {
-      if (hideTimer.current) clearTimeout(hideTimer.current);
+      // Il cambio schermata e la dissolvenza incrociata partono insieme,
+      // a tempo (non aspettando l'evento "fine riproduzione" del player,
+      // troppo vicino alla soglia di percezione su una clip da 750ms per
+      // fidarsene): la nuova schermata ha tutto il tempo di FADE_MS per
+      // montarsi sotto mentre il video sta ancora sfumando sopra di lei.
+      navTimer.current = setTimeout(() => {
+        onDone();
+        Animated.parallel([
+          Animated.timing(overlayOpacity, {
+            toValue: 0,
+            duration: FADE_MS,
+            easing: Easing.linear,
+            useNativeDriver: true,
+          }),
+          Animated.timing(contentOpacity, {
+            toValue: 1,
+            duration: FADE_MS,
+            easing: Easing.linear,
+            useNativeDriver: true,
+          }),
+        ]).start(() => setDirection(null));
+      }, NAV_AT_MS);
     },
-    []
+    [zoom, overlayOpacity, contentOpacity]
   );
 
   const playForward = useCallback(
-    (onDone: () => void) => {
-      onDoneRef.current = onDone;
-      forwardPlayer.currentTime = 0;
-      forwardPlayer.play();
-      setDirection("forward");
-      zoom.setValue(HOME_ZOOM);
-      Animated.timing(zoom, {
-        toValue: DETAIL_ZOOM,
-        duration: CLIP_DURATION_MS,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }).start();
-    },
-    [forwardPlayer, zoom]
+    (onDone: () => void) => run("forward", forwardPlayer, HOME_ZOOM, DETAIL_ZOOM, onDone),
+    [run, forwardPlayer]
   );
 
   const playReverse = useCallback(
-    (onDone: () => void) => {
-      onDoneRef.current = onDone;
-      reversePlayer.currentTime = 0;
-      reversePlayer.play();
-      setDirection("reverse");
-      zoom.setValue(DETAIL_ZOOM);
-      Animated.timing(zoom, {
-        toValue: HOME_ZOOM,
-        duration: CLIP_DURATION_MS,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }).start();
-    },
-    [reversePlayer, zoom]
+    (onDone: () => void) => run("reverse", reversePlayer, DETAIL_ZOOM, HOME_ZOOM, onDone),
+    [run, reversePlayer]
   );
 
   return (
-    <CarTransitionContext.Provider value={{ playForward, playReverse }}>
+    <CarTransitionContext.Provider value={{ playForward, playReverse, contentOpacity }}>
       {children}
       {direction && (
         <Animated.View
-          style={[StyleSheet.absoluteFill, { transform: [{ scale: zoom }] }]}
+          style={[
+            StyleSheet.absoluteFill,
+            { opacity: overlayOpacity, transform: [{ scale: zoom }] },
+          ]}
           pointerEvents="auto"
         >
           <VideoView

@@ -1,4 +1,4 @@
-import { useFocusEffect } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { api, ApiError } from "../../src/api";
@@ -7,6 +7,7 @@ import { StatTile } from "../../src/components/StatTile";
 import { VehicleHeroCard } from "../../src/components/VehicleHeroCard";
 import { colors, spacing, typography } from "../../src/theme";
 import type { VehicleState } from "../../src/types";
+import { useSwipeNav } from "../../src/useSwipeNav";
 
 export default function StatoScreen() {
   const [state, setState] = useState<VehicleState | null>(null);
@@ -37,6 +38,9 @@ export default function StatoScreen() {
     setRefreshing(false);
   }, [load]);
 
+  // Prima tab: solo a sinistra c'e' un'altra schermata (Viaggi).
+  const swipe = useSwipeNav({ onSwipeLeft: () => router.replace("/trips") });
+
   return (
     <ScrollView
       style={styles.screen}
@@ -44,6 +48,7 @@ export default function StatoScreen() {
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.textSecondary} />
       }
+      {...swipe}
     >
       <View style={styles.fill}>
         <VehicleHeroCard state={state}>

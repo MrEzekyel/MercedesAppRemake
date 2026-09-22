@@ -1,6 +1,6 @@
 import { router } from "expo-router";
 import type { ReactNode } from "react";
-import { ImageBackground, Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, ImageBackground, Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, spacing } from "../theme";
 import type { VehicleState } from "../types";
 import { AppHeader } from "./AppHeader";
@@ -22,7 +22,7 @@ interface Props {
  * dettaglio (comandi + ultimo viaggio).
  */
 export function VehicleHeroCard({ state, children }: Props) {
-  const { playForward } = useCarTransition();
+  const { playForward, contentOpacity } = useCarTransition();
   const locked = state?.doors_locked;
   const lockLabel =
     locked === null || locked === undefined ? "Stato sconosciuto" : locked ? "Chiusa" : "Aperta";
@@ -40,21 +40,27 @@ export function VehicleHeroCard({ state, children }: Props) {
         style={styles.hero}
         imageStyle={styles.heroImage}
       >
-        <AppHeader />
+        <Animated.View style={{ opacity: contentOpacity }}>
+          <AppHeader />
 
-        <View style={styles.greeting}>
-          <Text style={styles.greetingSmall}>Ciao Andrea</Text>
-          <Text style={styles.name}>{state?.display_name ?? "Classe A Premium"}</Text>
-          <View style={styles.statusRow}>
-            <LockGlyph size={13} color={lockColor} strokeWidth={1.6} />
-            <Text style={[styles.statusText, { color: lockColor }]}>{lockLabel}</Text>
-            {state?.updated_at && (
-              <Text style={styles.statusMuted}>· aggiornato {timeAgo(state.updated_at)}</Text>
-            )}
+          <View style={styles.greeting}>
+            <Text style={styles.greetingSmall}>Ciao Andrea</Text>
+            <Text style={styles.name}>{state?.display_name ?? "Classe A Premium"}</Text>
+            <View style={styles.statusRow}>
+              <LockGlyph size={13} color={lockColor} strokeWidth={1.6} />
+              <Text style={[styles.statusText, { color: lockColor }]}>{lockLabel}</Text>
+              {state?.updated_at && (
+                <Text style={styles.statusMuted}>· aggiornato {timeAgo(state.updated_at)}</Text>
+              )}
+            </View>
           </View>
-        </View>
+        </Animated.View>
 
-        {children && <View style={styles.overlayContent}>{children}</View>}
+        {children && (
+          <Animated.View style={[styles.overlayContent, { opacity: contentOpacity }]}>
+            {children}
+          </Animated.View>
+        )}
       </ImageBackground>
     </Pressable>
   );

@@ -2,7 +2,7 @@ import { BlurView } from "expo-blur";
 import { router, useFocusEffect } from "expo-router";
 import type { ComponentType } from "react";
 import { useCallback, useState } from "react";
-import { ImageBackground, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Animated, ImageBackground, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, ApiError, type CommandResult } from "../src/api";
 import { AppHeader } from "../src/components/AppHeader";
@@ -14,11 +14,15 @@ import {
   type IconProps,
   LightIcon,
   LockIcon,
+  OdometerIcon,
+  RouteIcon,
+  TireIcon,
   UnlockIcon,
   WindowIcon,
 } from "../src/components/icons";
 import { colors, radius, spacing } from "../src/theme";
 import type { TripSummary, VehicleState } from "../src/types";
+import { useSwipeNav } from "../src/useSwipeNav";
 
 type CommandKey = "toggleLock" | "windows" | "lights" | "horn" | "climate";
 
@@ -35,7 +39,7 @@ function sleep(ms: number): Promise<void> {
  */
 export default function VehicleDetailScreen() {
   const insets = useSafeAreaInsets();
-  const { playReverse } = useCarTransition();
+  const { playReverse, contentOpacity } = useCarTransition();
   const [state, setState] = useState<VehicleState | null>(null);
   const [lastTrip, setLastTrip] = useState<TripSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -89,108 +93,156 @@ export default function VehicleDetailScreen() {
   const fuelUsedPct =
     lastTrip?.fuel_used_l != null && tankCapacity ? (lastTrip.fuel_used_l / tankCapacity) * 100 : null;
 
+  // Come il pulsante indietro: swipe a destra riporta a Home con lo
+  // stesso video al contrario. A sinistra non c'e' nulla, e' l'ultima
+  // schermata di questo ramo.
+  const swipe = useSwipeNav({ onSwipeRight: () => playReverse(() => router.back()) });
+
   return (
-    <View style={styles.screen}>
+    <View style={styles.screen} {...swipe}>
       <ImageBackground
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         source={require("../assets/vehicle/rear.jpg")}
         style={styles.hero}
         imageStyle={styles.heroImage}
       >
-        <AppHeader />
+        <Animated.View style={[styles.dynamicLayer, { opacity: contentOpacity }]}>
+          <AppHeader />
 
-        <View style={styles.titleBlock}>
-          <Text style={styles.title}>{state?.display_name ?? "Classe A Premium"}</Text>
-          <Text style={styles.subtitle}>
-            {locked === null || locked === undefined
-              ? "Stato sconosciuto"
-              : locked
-                ? "Chiusa e sorvegliata"
-                : "Aperta"}
-          </Text>
-        </View>
-
-        <Pressable
-          onPress={() => playReverse(() => router.back())}
-          style={[styles.backHit, { top: insets.top + spacing.sm + spacing.md + 44 }]}
-          hitSlop={10}
-        >
-          <View style={styles.backIcon}>
-            <ChevronIcon size={15} color={colors.textPrimary} strokeWidth={1.6} />
-          </View>
-        </Pressable>
-
-        {/* Colonna comandi: galleggia sulla foto, scorre al suo interno. */}
-        <View style={styles.panelWrap}>
-          <View style={styles.panelChevron}>
-            <ChevronIcon size={13} color="rgba(255,255,255,0.45)" strokeWidth={1.5} />
+          <View style={styles.titleBlock}>
+            <Text style={styles.title}>{state?.display_name ?? "Classe A Premium"}</Text>
+            <Text style={styles.subtitle}>
+              {locked === null || locked === undefined
+                ? "Stato sconosciuto"
+                : locked
+                  ? "Chiusa e sorvegliata"
+                  : "Aperta"}
+            </Text>
           </View>
 
-          <BlurView intensity={28} tint="dark" style={styles.panel}>
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.panelContent}>
-              <CommandButton
-                Icon={locked ? UnlockIcon : LockIcon}
-                label={locked ? "Apri" : "Chiudi"}
-                caption="porte"
-                pending={pending === "toggleLock"}
-                onPress={() => runCommand("toggleLock", locked ? api.unlock : api.lock)}
-              />
-              <CommandButton
-                Icon={WindowIcon}
-                label={windowsOpen ? "Chiudi" : "Apri"}
-                caption="finestrini"
-                pending={pending === "windows"}
-                onPress={() =>
-                  runCommand("windows", windowsOpen ? api.windowsClose : api.windowsOpen)
-                }
-              />
-              <CommandButton
-                Icon={LightIcon}
-                label="Luci"
-                caption="lampeggio"
-                pending={pending === "lights"}
-                onPress={() => runCommand("lights", api.flashLights)}
-              />
-              <CommandButton
-                Icon={HornIcon}
-                label="Clacson"
-                caption="segnale"
-                pending={pending === "horn"}
-                onPress={() => runCommand("horn", api.sound)}
-              />
-              <CommandButton
-                Icon={ClimateIcon}
-                label="Clima"
-                caption="avvia"
-                pending={pending === "climate"}
-                onPress={() => runCommand("climate", api.climateStart)}
-              />
-            </ScrollView>
-          </BlurView>
+          <Pressable
+            onPress={() => playReverse(() => router.back())}
+            style={[styles.backHit, { top: insets.top + spacing.sm + spacing.md + 44 }]}
+            hitSlop={10}
+          >
+            <View style={styles.backIcon}>
+              <ChevronIcon size={15} color={colors.textPrimary} strokeWidth={1.6} />
+            </View>
+          </Pressable>
 
-          <View style={[styles.panelChevron, styles.panelChevronDown]}>
-            <ChevronIcon size={13} color="rgba(255,255,255,0.45)" strokeWidth={1.5} />
+          {/* Colonna comandi: galleggia sulla foto, scorre al suo interno. */}
+          <View style={styles.panelWrap}>
+            <View style={styles.panelChevron}>
+              <ChevronIcon size={13} color="rgba(255,255,255,0.45)" strokeWidth={1.5} />
+            </View>
+
+            <BlurView intensity={28} tint="dark" style={styles.panel}>
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.panelContent}>
+                <CommandButton
+                  Icon={locked ? UnlockIcon : LockIcon}
+                  label={locked ? "Apri" : "Chiudi"}
+                  caption="porte"
+                  pending={pending === "toggleLock"}
+                  onPress={() => runCommand("toggleLock", locked ? api.unlock : api.lock)}
+                />
+                <CommandButton
+                  Icon={WindowIcon}
+                  label={windowsOpen ? "Chiudi" : "Apri"}
+                  caption="finestrini"
+                  pending={pending === "windows"}
+                  onPress={() =>
+                    runCommand("windows", windowsOpen ? api.windowsClose : api.windowsOpen)
+                  }
+                />
+                <CommandButton
+                  Icon={LightIcon}
+                  label="Luci"
+                  caption="lampeggio"
+                  pending={pending === "lights"}
+                  onPress={() => runCommand("lights", api.flashLights)}
+                />
+                <CommandButton
+                  Icon={HornIcon}
+                  label="Clacson"
+                  caption="segnale"
+                  pending={pending === "horn"}
+                  onPress={() => runCommand("horn", api.sound)}
+                />
+                <CommandButton
+                  Icon={ClimateIcon}
+                  label="Clima"
+                  caption="avvia"
+                  pending={pending === "climate"}
+                  onPress={() => runCommand("climate", api.climateStart)}
+                />
+              </ScrollView>
+            </BlurView>
+
+            <View style={[styles.panelChevron, styles.panelChevronDown]}>
+              <ChevronIcon size={13} color="rgba(255,255,255,0.45)" strokeWidth={1.5} />
+            </View>
           </View>
-        </View>
 
-        {/* Ultimo viaggio: numeri liberi sulla foto, separati da filetti. */}
-        <View style={styles.footer}>
-          {error && <Text style={styles.errorText}>{error}</Text>}
+          {/* Ultimo viaggio: numeri liberi sulla foto, separati da filetti.
+              Stessa distanza dal bordo (18%) delle statistiche in Home: le
+              due schermate condividono lo stesso ritmo verticale. */}
+          <View style={styles.footer}>
+            {error && <Text style={styles.errorText}>{error}</Text>}
 
-          <Text style={styles.footerLabel}>
-            Ultimo viaggio{lastTrip ? ` · ${shortDate(lastTrip.started_at)}` : ""}
-          </Text>
+            <Text style={styles.footerLabel}>
+              Ultimo viaggio{lastTrip ? ` · ${shortDate(lastTrip.started_at)}` : ""}
+            </Text>
 
-          <View style={styles.footerRow}>
-            <FooterStat value={fmt(lastTrip?.distance_effective_km, 1)} unit="km" label="Distanza" />
-            <View style={styles.hairline} />
-            <FooterStat value={fmt(fuelUsedPct, 0)} unit="%" label="Serbatoio" />
-            <View style={styles.hairline} />
-            <FooterStat value={fmt(lastTrip?.l_per_100km, 1)} unit="l/100" label="Consumo" />
+            <View style={styles.footerRow}>
+              <FooterStat value={fmt(lastTrip?.distance_effective_km, 1)} unit="km" label="Distanza" />
+              <View style={styles.hairline} />
+              <FooterStat value={fmt(fuelUsedPct, 0)} unit="%" label="Serbatoio" />
+              <View style={styles.hairline} />
+              <FooterStat value={fmt(lastTrip?.l_per_100km, 1)} unit="l/100" label="Consumo" />
+            </View>
           </View>
-        </View>
+        </Animated.View>
       </ImageBackground>
+
+      {/* Stessa tab bar delle altre tre schermate: questa e' concettualmente
+          il dettaglio della tab "Auto", non una schermata a se', quindi la
+          barra deve restare visibile qui come lo e' ovunque altro. Non
+          sfuma con il resto (e' chrome persistente, come sulle altre tab). */}
+      <View style={[styles.tabBar, { paddingBottom: insets.bottom || spacing.sm }]}>
+        <TabBarButton
+          Icon={OdometerIcon}
+          label="Auto"
+          active
+          onPress={() => playReverse(() => router.back())}
+        />
+        <TabBarButton Icon={RouteIcon} label="Viaggi" onPress={() => router.replace("/trips")} />
+        <TabBarButton
+          Icon={TireIcon}
+          label="Info veicolo"
+          onPress={() => router.replace("/vehicle-info")}
+        />
+      </View>
     </View>
+  );
+}
+
+function TabBarButton({
+  Icon,
+  label,
+  active,
+  onPress,
+}: {
+  Icon: ComponentType<IconProps>;
+  label: string;
+  active?: boolean;
+  onPress: () => void;
+}) {
+  const color = active ? colors.textPrimary : "rgba(255,255,255,0.38)";
+  return (
+    <Pressable onPress={onPress} style={styles.tabButton} hitSlop={8}>
+      <Icon size={21} color={color} strokeWidth={1.4} />
+      <Text style={[styles.tabLabel, { color }]}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -247,6 +299,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   hero: { flex: 1, width: "100%" },
   heroImage: { resizeMode: "cover", transform: [{ scale: 1.06 }] },
+  dynamicLayer: { flex: 1 },
 
   titleBlock: { alignItems: "center", marginTop: spacing.md, paddingHorizontal: spacing.xl },
   title: { fontSize: 22, fontWeight: "600", color: colors.textPrimary, textAlign: "center" },
@@ -309,7 +362,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 0,
     right: 0,
-    bottom: spacing.xl + spacing.sm,
+    bottom: "18%",
     paddingHorizontal: spacing.lg,
     gap: spacing.md,
   },
@@ -332,4 +385,19 @@ const styles = StyleSheet.create({
   },
   hairline: { width: 1, height: 30, backgroundColor: "rgba(255,255,255,0.13)" },
   errorText: { fontSize: 12, color: colors.danger, textAlign: "center" },
+
+  /** Stessi valori della tab bar reale in (tabs)/_layout.tsx. */
+  tabBar: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: "row",
+    backgroundColor: "rgba(6,9,16,0.82)",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(255,255,255,0.08)",
+    paddingTop: spacing.sm,
+  },
+  tabButton: { flex: 1, alignItems: "center", gap: 3 },
+  tabLabel: { fontSize: 10, letterSpacing: 0.4, fontWeight: "500" },
 });

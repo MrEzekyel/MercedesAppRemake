@@ -7,7 +7,7 @@ import { StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Line } from "react-native-svg";
 import { colors, spacing } from "../theme";
-import { MercedesStarIcon } from "./icons";
+import { MercedesLogo } from "./MercedesLogo";
 
 export function AppHeader() {
   // insets.top varia molto per dispositivo (Dynamic Island ~59, notch
@@ -25,7 +25,7 @@ export function AppHeader() {
       </Svg>
 
       <View style={styles.monogram}>
-        <MercedesStarIcon size={50} color="rgba(255,255,255,0.92)" strokeWidth={1.3} />
+        <MercedesLogo size={56} />
       </View>
 
       <View style={styles.avatar}>

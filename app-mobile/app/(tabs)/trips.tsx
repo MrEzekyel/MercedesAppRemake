@@ -10,6 +10,7 @@ import { formatEur, tripCost } from "../../src/fuel";
 import { useFuelPrice } from "../../src/useFuelPrice";
 import { colors, radius, spacing } from "../../src/theme";
 import type { Refuel, TripSummary, VehicleState } from "../../src/types";
+import { useSwipeNav } from "../../src/useSwipeNav";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 /**
@@ -47,6 +48,12 @@ export default function ViaggiScreen() {
   const closed = trips.filter((t) => t.ended_at !== null);
   const last = closed[0] ?? null;
 
+  // Tab di mezzo: a destra c'e' Auto, a sinistra Info veicolo.
+  const swipe = useSwipeNav({
+    onSwipeLeft: () => router.replace("/vehicle-info"),
+    onSwipeRight: () => router.replace("/"),
+  });
+
   return (
     <View style={styles.screen}>
       <Image
@@ -56,7 +63,11 @@ export default function ViaggiScreen() {
         resizeMode="cover"
       />
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        {...swipe}
+      >
         <AppHeader />
 
         <View style={styles.titleBlock}>
