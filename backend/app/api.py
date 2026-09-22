@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import secrets
 from contextlib import asynccontextmanager
@@ -11,7 +12,7 @@ from uuid import UUID
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel
 
-from . import commands
+from . import commands, mimit
 from .config import settings
 from .db import Database
 from .service import MercedesService
@@ -20,6 +21,7 @@ LOGGER = logging.getLogger(__name__)
 
 db = Database(settings.asyncpg_dsn)
 service = MercedesService(db)
+_fuel_sync_task: asyncio.Task | None = None
 
 
 async def require_token(authorization: Annotated[str | None, Header()] = None) -> None:
@@ -34,6 +36,7 @@ async def require_token(authorization: Annotated[str | None, Header()] = None) -
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _fuel_sync_task
     await db.connect()
     try:
         await service.start()
@@ -41,7 +44,9 @@ async def lifespan(app: FastAPI):
         # L'API deve restare in piedi anche se Mercedes rifiuta la connessione,
         # altrimenti non si riesce nemmeno a leggere i viaggi gia' registrati.
         LOGGER.exception("Connessione a Mercedes fallita; API attiva in sola lettura")
+    _fuel_sync_task = asyncio.create_task(mimit.sync_loop(db))
     yield
+    _fuel_sync_task.cancel()
     await service.stop()
     await db.close()
 
@@ -91,6 +96,62 @@ async def update_settings(vin: str, body: VehicleSettings) -> dict:
     if updated is None:
         raise HTTPException(404, "Veicolo non trovato")
     return updated
+
+
+# Allargamento progressivo finche' non si trova un campione ragionevole di
+# distributori: 10 km basta in citta', ma un'auto ferma in campagna
+# potrebbe non avere niente entro quel raggio.
+_AVERAGE_RADII_KM = [10, 25, 50, 100]
+
+
+async def _resolve_position(vin: str | None, lat: float | None, lon: float | None) -> tuple[float, float]:
+    if lat is not None and lon is not None:
+        return lat, lon
+    if vin is None:
+        raise HTTPException(422, "Serve vin oppure lat e lon")
+    position = await db.get_vehicle_position(vin)
+    if position is None:
+        raise HTTPException(404, "Posizione del veicolo non disponibile")
+    return position
+
+
+@app.get("/api/fuel-prices/average", dependencies=[Depends(require_token)])
+async def fuel_price_average(
+    vin: str | None = None,
+    lat: float | None = None,
+    lon: float | None = None,
+) -> dict:
+    """Prezzo medio del self-service nella zona del veicolo (o delle
+    coordinate passate). Usato come stima di fallback quando l'utente non
+    ha impostato un prezzo e non ha ancora rifornimenti confermati."""
+    position = await _resolve_position(vin, lat, lon)
+    fuel_type = settings.fuel_type_mimit
+
+    local = await db.average_fuel_price_near(*position, fuel_type, is_self=True, radii_km=_AVERAGE_RADII_KM)
+    if local is not None:
+        return {**local, "fuel_type": fuel_type, "source": "locale"}
+
+    national = await db.national_average_fuel_price(fuel_type, is_self=True)
+    if national is not None:
+        return {**national, "fuel_type": fuel_type, "source": "nazionale"}
+
+    raise HTTPException(503, "Prezzi carburante non ancora disponibili")
+
+
+@app.get("/api/fuel-prices/nearby", dependencies=[Depends(require_token)])
+async def fuel_prices_nearby(
+    vin: str | None = None,
+    lat: float | None = None,
+    lon: float | None = None,
+    radius_km: Annotated[float, Query(gt=0, le=100)] = 15,
+    limit: Annotated[int, Query(ge=1, le=50)] = 10,
+) -> list[dict]:
+    """Distributori piu' economici entro il raggio, per il suggerimento
+    di prezzo quando si conferma un rifornimento."""
+    position = await _resolve_position(vin, lat, lon)
+    return await db.nearby_fuel_prices(
+        *position, settings.fuel_type_mimit, is_self=True, radius_km=radius_km, limit=limit
+    )
 
 
 class ConfirmRefuel(BaseModel):

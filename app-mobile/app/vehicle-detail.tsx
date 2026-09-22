@@ -3,6 +3,7 @@ import { router, useFocusEffect } from "expo-router";
 import type { ComponentType } from "react";
 import { useCallback, useState } from "react";
 import { ImageBackground, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, ApiError, type CommandResult } from "../src/api";
 import { AppHeader } from "../src/components/AppHeader";
 import {
@@ -32,6 +33,7 @@ function sleep(ms: number): Promise<void> {
  * stanno gia' in basso.
  */
 export default function VehicleDetailScreen() {
+  const insets = useSafeAreaInsets();
   const [state, setState] = useState<VehicleState | null>(null);
   const [lastTrip, setLastTrip] = useState<TripSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -106,7 +108,11 @@ export default function VehicleDetailScreen() {
           </Text>
         </View>
 
-        <Pressable onPress={() => router.back()} style={styles.backHit} hitSlop={10}>
+        <Pressable
+          onPress={() => router.back()}
+          style={[styles.backHit, { top: insets.top + spacing.sm + spacing.md + 44 }]}
+          hitSlop={10}
+        >
           <View style={styles.backIcon}>
             <ChevronIcon size={15} color={colors.textPrimary} strokeWidth={1.6} />
           </View>
@@ -245,7 +251,7 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 13, color: colors.textSecondary, marginTop: 5 },
 
   /** Rotazione di 180°: un solo glifo chevron serve per tutte le direzioni. */
-  backHit: { position: "absolute", left: spacing.md, top: spacing.xl + spacing.md + 44 },
+  backHit: { position: "absolute", left: spacing.md },
   backIcon: {
     width: 32,
     height: 32,

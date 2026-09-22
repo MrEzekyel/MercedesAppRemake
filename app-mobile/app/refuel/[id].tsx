@@ -13,7 +13,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { api, ApiError } from "../../src/api";
+import { api, ApiError, type NearbyFuelPrice } from "../../src/api";
 import { colors, radius, spacing, typography } from "../../src/theme";
 import type { Refuel } from "../../src/types";
 
@@ -25,6 +25,7 @@ export default function ConfirmRefuelScreen() {
   const [fullTank, setFullTank] = useState(true);
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const [nearby, setNearby] = useState<NearbyFuelPrice[]>([]);
 
   useEffect(() => {
     api.listRefuels({ status: "pending" }).then((rows) => {
@@ -33,6 +34,18 @@ export default function ConfirmRefuelScreen() {
       if (found?.liters_estimated) setLiters(found.liters_estimated.toFixed(1));
     });
   }, [id]);
+
+  useEffect(() => {
+    // Posizione attuale dell'auto come approssimazione di dove e' avvenuto
+    // il rifornimento: non e' salvata sul rifornimento stesso, ma per un
+    // suggerimento di prezzo (non un dato definitivo) basta.
+    api
+      .getState()
+      .then((rows) => rows[0]?.vin)
+      .then((vin) => (vin ? api.getNearbyFuelPrices(vin, 8, 3) : []))
+      .then(setNearby)
+      .catch(() => setNearby([]));
+  }, []);
 
   const priceHint =
     liters && cost && Number(liters) > 0
@@ -119,6 +132,27 @@ export default function ConfirmRefuelScreen() {
 
         {priceHint && <Text style={styles.priceHint}>{priceHint}</Text>}
 
+        {nearby.length > 0 && (
+          <View style={styles.suggestions}>
+            <Text style={styles.suggestionsLabel}>Distributori vicini (MIMIT)</Text>
+            <View style={styles.suggestionsRow}>
+              {nearby.map((station) => (
+                <Pressable
+                  key={station.station_id}
+                  onPress={() => {
+                    const litersValue = Number(liters.replace(",", "."));
+                    if (litersValue > 0) setCost((litersValue * station.price).toFixed(2));
+                  }}
+                  style={({ pressed }) => [styles.chip, pressed && styles.chipPressed]}
+                >
+                  <Text style={styles.chipPrice}>{station.price.toFixed(3).replace(".", ",")} €</Text>
+                  <Text style={styles.chipDistance}>{fmtDistance(station.distance_m)}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        )}
+
         <View style={styles.switchRow}>
           <Text style={styles.switchLabel}>Pieno completo</Text>
           <Switch value={fullTank} onValueChange={setFullTank} trackColor={{ true: colors.accent }} />
@@ -146,6 +180,10 @@ export default function ConfirmRefuelScreen() {
   );
 }
 
+function fmtDistance(meters: number): string {
+  return meters < 1000 ? `${Math.round(meters)} m` : `${(meters / 1000).toFixed(1)} km`;
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <View style={styles.field}>
@@ -170,6 +208,27 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   priceHint: { ...typography.caption, color: colors.textTertiary, marginTop: -spacing.sm },
+  suggestions: { gap: spacing.xs, marginTop: -spacing.xs },
+  suggestionsLabel: {
+    fontSize: 9.5,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    color: "rgba(255,255,255,0.42)",
+  },
+  suggestionsRow: { flexDirection: "row", gap: spacing.sm },
+  chip: {
+    flex: 1,
+    alignItems: "center",
+    gap: 2,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.09)",
+  },
+  chipPressed: { opacity: 0.6, borderColor: colors.accent },
+  chipPrice: { fontSize: 14, fontWeight: "600", color: colors.textPrimary },
+  chipDistance: { fontSize: 10.5, color: "rgba(255,255,255,0.45)" },
   switchRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   switchLabel: { ...typography.body, color: colors.textPrimary },
   confirmButton: {

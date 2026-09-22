@@ -12,7 +12,8 @@ import {
 } from "react-native";
 import { api, ApiError } from "../src/api";
 import { type Bar, BarChart } from "../src/components/BarChart";
-import { formatEur, refuelCost, resolveFuelPrice, tripCost } from "../src/fuel";
+import { formatEur, refuelCost, tripCost } from "../src/fuel";
+import { useFuelPrice } from "../src/useFuelPrice";
 import { colors, radius, spacing } from "../src/theme";
 import type { Refuel, TripSummary, VehicleState } from "../src/types";
 
@@ -57,7 +58,7 @@ export default function ConsumiScreen() {
     }, [load])
   );
 
-  const price = resolveFuelPrice(state?.fuel_price_eur_per_l, refuels);
+  const price = useFuelPrice(state, refuels);
 
   const savePrice = useCallback(
     async (value: number | null) => {
@@ -125,7 +126,9 @@ export default function ConsumiScreen() {
             ? "Impostato da te"
             : price.source === "media"
               ? `Media dei tuoi rifornimenti confermati (${confirmed})`
-              : "Nessun rifornimento confermato: imposta un prezzo per vedere i costi"}
+              : price.source === "mimit"
+                ? (price.detail ?? "Stima dai prezzi pubblici MIMIT")
+                : "Nessun rifornimento confermato: imposta un prezzo per vedere i costi"}
         </Text>
 
         <View style={styles.priceActions}>

@@ -4,12 +4,20 @@
  * quindi vive in un solo componente invece di essere ricopiata.
  */
 import { StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Line } from "react-native-svg";
 import { colors, spacing } from "../theme";
+import { MercedesStarIcon } from "./icons";
 
 export function AppHeader() {
+  // insets.top varia molto per dispositivo (Dynamic Island ~59, notch
+  // classico ~47, nessuno ~20/44): un padding fisso andava bene solo su
+  // alcuni. Con l'inset la riga scende sempre appena sotto l'area di
+  // sistema, isola compresa.
+  const insets = useSafeAreaInsets();
+
   return (
-    <View style={styles.row}>
+    <View style={[styles.row, { paddingTop: insets.top + spacing.sm }]}>
       <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
         <Line x1="3" y1="7.5" x2="21" y2="7.5" stroke="rgba(255,255,255,0.85)" strokeWidth={1.4} strokeLinecap="round" />
         <Line x1="3" y1="12.5" x2="15" y2="12.5" stroke="rgba(255,255,255,0.85)" strokeWidth={1.4} strokeLinecap="round" />
@@ -17,7 +25,7 @@ export function AppHeader() {
       </Svg>
 
       <View style={styles.monogram}>
-        <View style={styles.monogramDot} />
+        <MercedesStarIcon size={19} color="rgba(255,255,255,0.9)" strokeWidth={1.3} />
       </View>
 
       <View style={styles.avatar}>
@@ -32,7 +40,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingTop: spacing.xl + spacing.md,
     paddingHorizontal: spacing.md,
   },
   monogram: {
@@ -44,7 +51,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  monogramDot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: colors.accent },
   avatar: {
     width: 30,
     height: 30,

@@ -61,6 +61,17 @@ export const api = {
       body: JSON.stringify({ fuel_price_eur_per_l: price }),
     }),
 
+  /**
+   * Prezzo medio locale (o nazionale se in zona non ci sono abbastanza
+   * distributori) dagli open data MIMIT, ultimo fallback quando non c'e'
+   * ne' un prezzo impostato a mano ne' uno storico di rifornimenti.
+   */
+  getFuelPriceAverage: (vin: string): Promise<FuelPriceAverage> =>
+    request(`/api/fuel-prices/average?vin=${vin}`),
+
+  getNearbyFuelPrices: (vin: string, radiusKm = 15, limit = 10): Promise<NearbyFuelPrice[]> =>
+    request(`/api/fuel-prices/nearby?vin=${vin}&radius_km=${radiusKm}&limit=${limit}`),
+
   listRefuels: (
     opts: { vin?: string; status?: "pending" | "confirmed"; limit?: number } = {}
   ): Promise<Refuel[]> => {
@@ -118,4 +129,26 @@ export interface CommandStatus {
   command: string;
   status: "pending" | "completed" | "failed";
   error: string | null;
+}
+
+export interface FuelPriceAverage {
+  price: number;
+  station_count: number;
+  /** Assente quando la stima e' nazionale invece che locale. */
+  radius_km?: number;
+  fuel_type: string;
+  source: "locale" | "nazionale";
+}
+
+export interface NearbyFuelPrice {
+  station_id: number;
+  name: string | null;
+  brand: string | null;
+  address: string | null;
+  comune: string | null;
+  latitude: number;
+  longitude: number;
+  price: number;
+  communicated_at: string | null;
+  distance_m: number;
 }

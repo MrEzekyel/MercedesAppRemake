@@ -6,7 +6,8 @@ import { api, ApiError } from "../../src/api";
 import { AppHeader } from "../../src/components/AppHeader";
 import { ChevronIcon, LeafIcon, RouteIcon } from "../../src/components/icons";
 import { RouteSpark } from "../../src/components/RouteSpark";
-import { formatEur, resolveFuelPrice, tripCost } from "../../src/fuel";
+import { formatEur, tripCost } from "../../src/fuel";
+import { useFuelPrice } from "../../src/useFuelPrice";
 import { colors, radius, spacing } from "../../src/theme";
 import type { Refuel, TripSummary, VehicleState } from "../../src/types";
 
@@ -42,7 +43,7 @@ export default function ViaggiScreen() {
     }, [])
   );
 
-  const price = resolveFuelPrice(state?.fuel_price_eur_per_l, refuels);
+  const price = useFuelPrice(state, refuels);
   const closed = trips.filter((t) => t.ended_at !== null);
   const last = closed[0] ?? null;
 

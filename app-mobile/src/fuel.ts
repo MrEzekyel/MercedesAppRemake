@@ -6,15 +6,19 @@
  *   1. il valore impostato a mano dall'utente (vince sempre);
  *   2. la media dei rifornimenti gia' confermati, pesata sui litri, cosi'
  *      un pieno da 40 l conta piu' di un rabbocco da 5;
- *   3. niente, e allora il costo non si mostra invece di inventarlo.
+ *   3. la media MIMIT della zona (vedi useFuelPrice.ts: e' un fallback
+ *      asincrono, non sincrono come i primi due);
+ *   4. niente, e allora il costo non si mostra invece di inventarlo.
  */
 import type { Refuel } from "./types";
 
-export type PriceSource = "manuale" | "media" | "assente";
+export type PriceSource = "manuale" | "media" | "mimit" | "assente";
 
 export interface FuelPrice {
   value: number | null;
   source: PriceSource;
+  /** Solo per source "mimit": una riga che spiega da dove viene il numero. */
+  detail?: string;
 }
 
 export function resolveFuelPrice(

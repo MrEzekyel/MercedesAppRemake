@@ -3,9 +3,10 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
 import MapView, { Marker, Polyline } from "react-native-maps";
 import { api, ApiError } from "../../src/api";
-import { formatEur, resolveFuelPrice, tripCost } from "../../src/fuel";
+import { formatEur, tripCost } from "../../src/fuel";
 import { colors, radius, spacing } from "../../src/theme";
 import type { Refuel, TripDetail, VehicleState } from "../../src/types";
+import { useFuelPrice } from "../../src/useFuelPrice";
 
 /**
  * Un viaggio per intero: dove sei passato, quanto e' durato, quanto ha
@@ -16,15 +17,18 @@ import type { Refuel, TripDetail, VehicleState } from "../../src/types";
 export default function TripDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [trip, setTrip] = useState<TripDetail | null>(null);
-  const [price, setPrice] = useState<number | null>(null);
+  const [refuels, setRefuels] = useState<Refuel[]>([]);
+  const [state, setState] = useState<VehicleState | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const price = useFuelPrice(state, refuels);
 
   useEffect(() => {
     if (!id) return;
     Promise.all([api.getTrip(id), api.listRefuels({ limit: 200 }), api.getState()])
-      .then(([t, refuels, states]: [TripDetail, Refuel[], VehicleState[]]) => {
+      .then(([t, refuelRows, states]: [TripDetail, Refuel[], VehicleState[]]) => {
         setTrip(t);
-        setPrice(resolveFuelPrice(states[0]?.fuel_price_eur_per_l, refuels).value);
+        setRefuels(refuelRows);
+        setState(states[0] ?? null);
         setError(null);
       })
       .catch((e) => setError(e instanceof ApiError ? e.message : "Backend non raggiungibile"));
@@ -47,7 +51,7 @@ export default function TripDetailScreen() {
   }
 
   const coords = trip.route.map(([longitude, latitude]) => ({ latitude, longitude }));
-  const cost = tripCost(trip, price);
+  const cost = tripCost(trip, price.value);
   const perKm = cost != null && trip.distance_effective_km ? cost / trip.distance_effective_km : null;
 
   return (
@@ -92,7 +96,7 @@ export default function TripDetailScreen() {
         </View>
       </View>
 
-      {price == null && (
+      {price.value == null && (
         <Text style={styles.hint}>
           Imposta il prezzo al litro in Viaggi › Consumi per vedere il costo
         </Text>

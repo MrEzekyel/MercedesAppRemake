@@ -50,6 +50,8 @@ class MercedesService:
         self._hass = HomeAssistant()
         self._ignition_states: dict[str, bool] = {}
         self._websocket: Websocket | None = None
+        self._last_event_at: datetime | None = None
+        self._silence_watchdog: asyncio.Task | None = None
 
     async def start(self) -> None:
         entry = ConfigEntry.load(settings.token_path)
@@ -92,11 +94,38 @@ class MercedesService:
             app_version=app_version,
         )
         LOGGER.info("Connessione al websocket Mercedes...")
+        self._silence_watchdog = asyncio.create_task(self._warn_if_silent())
         await self._websocket.async_connect(self._on_data)
 
     async def stop(self) -> None:
+        if self._silence_watchdog:
+            self._silence_watchdog.cancel()
         if self._websocket:
             await self._websocket.async_stop()
+
+    async def _warn_if_silent(self) -> None:
+        """Segnala nei log quando non arrivano eventi da un po'.
+
+        mbapi2020 (libreria vendorizzata, non tocchiamo il suo codice) si
+        riconnette da solo dopo un calo di rete, ma lo fa in silenzio: senza
+        questo, un buco di connettivita' (Mac in sleep, hotspot instabile...)
+        durante un viaggio reale passa inosservato e il viaggio semplicemente
+        non compare, senza che nulla nei log lo spieghi. Non e' un contatore
+        di viaggi persi: e' solo il segnale "qui potremmo aver perso qualcosa".
+        """
+        threshold = settings.silence_warning_seconds
+        while True:
+            await asyncio.sleep(threshold)
+            if self._last_event_at is None:
+                continue
+            silent_for = (datetime.now(timezone.utc) - self._last_event_at).total_seconds()
+            if silent_for >= threshold:
+                LOGGER.warning(
+                    "Nessun evento dall'auto da %.0f minuti: se in questo periodo "
+                    "l'auto e' stata guidata, quel viaggio non verra' registrato "
+                    "(nessuno storico e' disponibile a posteriori)",
+                    silent_for / 60,
+                )
 
     async def send_command(self, vin: str, command: str) -> uuid.UUID:
         """Invia un comando remoto (chiudi/apri, clima, luci) e lo registra.
@@ -192,6 +221,7 @@ class MercedesService:
     async def _handle_update(self, vin: str, update: Any, parser) -> None:
         attrs = parser(update)
         ts = _timestamp(update)
+        self._last_event_at = datetime.now(timezone.utc)
 
         await self._db.ensure_vehicle(vin)
         await self._db.log_raw_event(vin, "vepUpdate", MessageToDict(update))

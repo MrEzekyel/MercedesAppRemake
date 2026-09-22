@@ -34,6 +34,21 @@ class Settings(BaseSettings):
 
     token_path: Path = BASE_DIR / "data" / "token.json"
 
+    # Soglia oltre la quale un silenzio dall'auto viene segnalato nei log
+    # (vedi MercedesService._warn_if_silent). 30 min: sotto e' normale per
+    # un'auto ferma, sopra puo' voler dire un viaggio perso per un calo
+    # di rete.
+    silence_warning_seconds: int = 1800
+
+    # Carburante di questa vettura (benzina): filtra i prezzi MIMIT, che
+    # coprono anche gasolio/GPL/metano/colonnine. Se un giorno l'app
+    # gestisse piu' veicoli con motorizzazioni diverse, diventerebbe un
+    # campo per veicolo invece che una costante globale.
+    fuel_type_mimit: str = "Benzina"
+    # MIMIT pubblica un nuovo estratto circa una volta al giorno (mattina):
+    # una sync ogni 12h lo intercetta senza martellare il sito ogni poche ore.
+    fuel_price_sync_interval_seconds: int = 12 * 3600
+
     @property
     def asyncpg_dsn(self) -> str:
         return self.database_url

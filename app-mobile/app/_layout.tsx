@@ -1,10 +1,17 @@
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { colors } from "../src/theme";
 
+/**
+ * SafeAreaProvider qui in radice: AppHeader (e il pulsante indietro di
+ * vehicle-detail) leggono insets.top per scendere sotto la Dynamic Island
+ * invece di usare un padding fisso. Senza il Provider, useSafeAreaInsets()
+ * nei componenti figli restituirebbe sempre zero.
+ */
 export default function RootLayout() {
   return (
-    <>
+    <SafeAreaProvider>
       <StatusBar style="light" />
       <Stack
         screenOptions={{
@@ -28,6 +35,6 @@ export default function RootLayout() {
           options={{ title: "Conferma rifornimento", presentation: "modal" }}
         />
       </Stack>
-    </>
+    </SafeAreaProvider>
   );
 }

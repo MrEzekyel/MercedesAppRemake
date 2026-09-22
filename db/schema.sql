@@ -216,3 +216,30 @@ CREATE TABLE device (
     created_at  timestamptz NOT NULL DEFAULT now(),
     last_seen_at timestamptz
 );
+
+-- ---------------------------------------------------------------------------
+-- Prezzi carburante (open data MIMIT) — vedi db/migrations/0004_fuel_stations.sql
+-- per la spiegazione estesa.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE fuel_station (
+    id          integer PRIMARY KEY,  -- idImpianto MIMIT
+    brand       text,
+    name        text,
+    address     text,
+    comune      text,
+    provincia   text,
+    position    geography(Point, 4326) NOT NULL,
+    updated_at  timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX fuel_station_position_idx ON fuel_station USING gist (position);
+
+CREATE TABLE fuel_price (
+    station_id   integer NOT NULL REFERENCES fuel_station(id) ON DELETE CASCADE,
+    fuel_type    text NOT NULL,
+    is_self      boolean NOT NULL,
+    price        numeric(5,3) NOT NULL,
+    communicated_at timestamptz,
+    PRIMARY KEY (station_id, fuel_type, is_self)
+);

@@ -126,6 +126,14 @@ class Database:
         )
         return [_row_to_dict(r) for r in rows]
 
+    async def get_vehicle_position(self, vin: str) -> tuple[float, float] | None:
+        row = await self.pool.fetchrow(
+            "SELECT ST_Y(position::geometry) AS lat, ST_X(position::geometry) AS lon "
+            "FROM vehicle_state WHERE vin = $1 AND position IS NOT NULL",
+            vin,
+        )
+        return (float(row["lat"]), float(row["lon"])) if row else None
+
     async def set_fuel_price(self, vin: str, price: float | None) -> dict[str, Any] | None:
         """None rimette il prezzo "automatico" (media dei rifornimenti)."""
         row = await self.pool.fetchrow(
@@ -369,6 +377,121 @@ class Database:
     async def get_command(self, command_id: UUID) -> dict[str, Any] | None:
         row = await self.pool.fetchrow("SELECT * FROM command_log WHERE id = $1", command_id)
         return _row_to_dict(row) if row else None
+
+    # -- prezzi carburante (MIMIT) -------------------------------------------
+
+    async def replace_fuel_prices(self, stations: list[Any], prices: list[Any]) -> None:
+        """Sostituisce l'intero snapshot con quello appena scaricato.
+
+        MIMIT non offre un delta: ogni sync e' un dump completo, quindi il
+        modo corretto di applicarlo e' svuotare e reinserire, non fare
+        merge riga per riga (impianti chiusi o rimossi altrimenti
+        resterebbero in giro per sempre).
+        """
+        station_ids = {s.id for s in stations}
+        # I due CSV vengono scaricati separatamente e possono disallinearsi
+        # (un prezzo per un impianto che non compare nell'anagrafica di
+        # oggi): senza questo filtro l'INSERT fallirebbe per violazione
+        # della foreign key e l'intero sync andrebbe perso.
+        prices = [p for p in prices if p.station_id in station_ids]
+
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute("TRUNCATE fuel_station CASCADE")
+                if stations:
+                    await conn.executemany(
+                        """
+                        INSERT INTO fuel_station
+                            (id, brand, name, address, comune, provincia, position)
+                        VALUES ($1, $2, $3, $4, $5, $6,
+                                ST_SetSRID(ST_MakePoint($7, $8), 4326)::geography)
+                        """,
+                        [
+                            (s.id, s.brand, s.name, s.address, s.comune, s.provincia, s.lon, s.lat)
+                            for s in stations
+                        ],
+                    )
+                if prices:
+                    await conn.executemany(
+                        """
+                        INSERT INTO fuel_price
+                            (station_id, fuel_type, is_self, price, communicated_at)
+                        VALUES ($1, $2, $3, $4, $5)
+                        ON CONFLICT (station_id, fuel_type, is_self) DO NOTHING
+                        """,
+                        [
+                            (p.station_id, p.fuel_type, p.is_self, p.price, p.communicated_at)
+                            for p in prices
+                        ],
+                    )
+
+    async def fuel_price_status(self) -> dict[str, Any]:
+        row = await self.pool.fetchrow(
+            "SELECT count(*) AS stations, max(updated_at) AS synced_at FROM fuel_station"
+        )
+        return _row_to_dict(row)
+
+    async def average_fuel_price_near(
+        self, lat: float, lon: float, fuel_type: str, is_self: bool, radii_km: list[float]
+    ) -> dict[str, Any] | None:
+        """Prezzo medio nella zona, allargando il raggio finche' non trova
+        un campione ragionevole (evita una media su un solo distributore
+        isolato, che non e' rappresentativa)."""
+        for radius_km in radii_km:
+            row = await self.pool.fetchrow(
+                """
+                SELECT count(*)::int AS station_count, avg(fp.price)::numeric AS price
+                FROM fuel_price fp
+                JOIN fuel_station fs ON fs.id = fp.station_id
+                WHERE fp.fuel_type = $1 AND fp.is_self = $2
+                  AND ST_DWithin(
+                        fs.position,
+                        ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography,
+                        $5
+                      )
+                """,
+                fuel_type, is_self, lon, lat, radius_km * 1000,
+            )
+            if row and row["station_count"] >= 3:
+                result = _row_to_dict(row)
+                result["radius_km"] = radius_km
+                return result
+        return None
+
+    async def national_average_fuel_price(self, fuel_type: str, is_self: bool) -> dict[str, Any] | None:
+        row = await self.pool.fetchrow(
+            "SELECT count(*)::int AS station_count, avg(price)::numeric AS price "
+            "FROM fuel_price WHERE fuel_type = $1 AND is_self = $2",
+            fuel_type, is_self,
+        )
+        if not row or not row["station_count"]:
+            return None
+        return _row_to_dict(row)
+
+    async def nearby_fuel_prices(
+        self, lat: float, lon: float, fuel_type: str, is_self: bool, radius_km: float, limit: int
+    ) -> list[dict[str, Any]]:
+        rows = await self.pool.fetch(
+            """
+            SELECT fs.id AS station_id, fs.name, fs.brand, fs.address, fs.comune,
+                   ST_Y(fs.position::geometry) AS latitude,
+                   ST_X(fs.position::geometry) AS longitude,
+                   fp.price, fp.communicated_at,
+                   ST_Distance(
+                       fs.position, ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography
+                   ) AS distance_m
+            FROM fuel_price fp
+            JOIN fuel_station fs ON fs.id = fp.station_id
+            WHERE fp.fuel_type = $1 AND fp.is_self = $2
+              AND ST_DWithin(
+                    fs.position, ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography, $5
+                  )
+            ORDER BY fp.price ASC
+            LIMIT $6
+            """,
+            fuel_type, is_self, lon, lat, radius_km * 1000, limit,
+        )
+        return [_row_to_dict(r) for r in rows]
 
 
 def _row_to_dict(row: asyncpg.Record) -> dict[str, Any]:
