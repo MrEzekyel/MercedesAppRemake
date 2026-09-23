@@ -1,11 +1,13 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useState } from "react";
-import { Dimensions, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Animated, Dimensions, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { api, ApiError } from "../../src/api";
 import { AppHeader } from "../../src/components/AppHeader";
+import { useCarTransition } from "../../src/components/CarTransition";
 import { ChevronIcon, LeafIcon, RouteIcon } from "../../src/components/icons";
 import { RouteSpark } from "../../src/components/RouteSpark";
+import { VehicleGreeting } from "../../src/components/VehicleGreeting";
 import { formatEur, tripCost } from "../../src/fuel";
 import { useFuelPrice } from "../../src/useFuelPrice";
 import { colors, radius, spacing } from "../../src/theme";
@@ -30,6 +32,8 @@ export default function ViaggiScreen() {
   const [refuels, setRefuels] = useState<Refuel[]>([]);
   const [state, setState] = useState<VehicleState | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { play, contentOpacity, vehicleState, reportVehicleState } = useCarTransition();
+  const scrollRef = useRef<ScrollView>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -41,8 +45,13 @@ export default function ViaggiScreen() {
           setError(null);
         })
         .catch((e) => setError(e instanceof ApiError ? e.message : "Backend non raggiungibile"));
+      // Uscendo si torna in cima: al ritorno header e saluto devono stare
+      // dove li ridisegna il video di transizione, non scrollati via.
+      return () => scrollRef.current?.scrollTo({ y: 0, animated: false });
     }, [])
   );
+
+  useEffect(() => reportVehicleState(state), [state, reportVehicleState]);
 
   const price = useFuelPrice(state, refuels);
   const closed = trips.filter((t) => t.ended_at !== null);
@@ -50,8 +59,8 @@ export default function ViaggiScreen() {
 
   // Tab di mezzo: a destra c'e' Auto, a sinistra Info veicolo.
   const swipe = useSwipeNav({
-    onSwipeLeft: () => router.replace("/vehicle-info"),
-    onSwipeRight: () => router.replace("/"),
+    onSwipeLeft: () => play("trips", "info", () => router.replace("/vehicle-info")),
+    onSwipeRight: () => play("trips", "home", () => router.replace("/")),
   });
 
   return (
@@ -64,20 +73,17 @@ export default function ViaggiScreen() {
       />
 
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         {...swipe}
       >
+        {/* Header e saluto identici in tutte le schermate: restano fermi
+            anche durante il video di transizione, non sfumano mai. */}
         <AppHeader />
+        <VehicleGreeting state={vehicleState} />
 
-        <View style={styles.titleBlock}>
-          <Text style={styles.title}>Viaggi</Text>
-          <Text style={styles.subtitle}>
-            {closed.length > 0 ? `${closed.length} registrati` : "Nessun viaggio ancora"}
-          </Text>
-        </View>
-
-        <View style={styles.sheet}>
+        <Animated.View style={[styles.sheet, { opacity: contentOpacity }]}>
           <LinearGradient
             colors={["transparent", "rgba(11,18,32,0.75)", colors.background]}
             locations={[0, 0.5, 1]}
@@ -150,7 +156,7 @@ export default function ViaggiScreen() {
               trips.map((trip) => <TripRow key={trip.id} trip={trip} price={price.value} />)
             )}
           </View>
-        </View>
+        </Animated.View>
       </ScrollView>
     </View>
   );
@@ -226,10 +232,6 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   hero: { position: "absolute", top: 0, left: 0, width: SCREEN_W, height: IMAGE_H },
   content: { paddingBottom: 110 },
-
-  titleBlock: { alignItems: "center", marginTop: spacing.md },
-  title: { fontSize: 24, fontWeight: "600", color: colors.textPrimary },
-  subtitle: { fontSize: 13, color: colors.textSecondary, marginTop: 4 },
 
   sheet: { marginTop: SHEET_TOP },
   sheetFade: { position: "absolute", left: 0, right: 0, top: -170, height: 170 },

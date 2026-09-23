@@ -1,7 +1,7 @@
 import { BlurView } from "expo-blur";
 import { router, useFocusEffect } from "expo-router";
 import type { ComponentType } from "react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Animated, ImageBackground, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, ApiError, type CommandResult } from "../src/api";
@@ -38,10 +38,10 @@ function sleep(ms: number): Promise<void> {
  */
 export default function VehicleDetailScreen() {
   const insets = useSafeAreaInsets();
-  const { playReverse, contentOpacity, getLastVehicleState } = useCarTransition();
-  // Parte dallo stato gia' mostrato in Home: il saluto resta fermo sopra il
-  // video, e se qui partisse da null al taglio cambierebbe testo di colpo.
-  const [state, setState] = useState<VehicleState | null>(getLastVehicleState);
+  const { play, contentOpacity, vehicleState, reportVehicleState } = useCarTransition();
+  // Parte dallo stato gia' mostrato in Home, cosi' i comandi sono pronti
+  // prima ancora che arrivi la risposta del server.
+  const [state, setState] = useState<VehicleState | null>(vehicleState);
   const [lastTrip, setLastTrip] = useState<TripSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<CommandKey | null>(null);
@@ -62,6 +62,8 @@ export default function VehicleDetailScreen() {
       load();
     }, [load])
   );
+
+  useEffect(() => reportVehicleState(state), [state, reportVehicleState]);
 
   const runCommand = useCallback(
     async (key: CommandKey, action: (vin: string) => Promise<CommandResult>) => {
@@ -97,7 +99,7 @@ export default function VehicleDetailScreen() {
   // Come il pulsante indietro: swipe a destra riporta a Home con lo
   // stesso video al contrario. A sinistra non c'e' nulla, e' l'ultima
   // schermata di questo ramo.
-  const swipe = useSwipeNav({ onSwipeRight: () => playReverse(() => router.back(), state) });
+  const swipe = useSwipeNav({ onSwipeRight: () => play("detail", "home", () => router.back()) });
 
   return (
     <View style={styles.screen} {...swipe}>
@@ -110,7 +112,7 @@ export default function VehicleDetailScreen() {
         {/* Header e saluto identici a Home e ridisegnati sopra il video:
             restano fermi, non sfumano mai. */}
         <AppHeader />
-        <VehicleGreeting state={state} />
+        <VehicleGreeting state={vehicleState} />
 
         {/* A tutto schermo come prima: backHit, panelWrap e footer sono
             posizionati rispetto allo schermo intero, non a cio' che resta
@@ -120,7 +122,7 @@ export default function VehicleDetailScreen() {
           pointerEvents="box-none"
         >
           <Pressable
-            onPress={() => playReverse(() => router.back(), state)}
+            onPress={() => play("detail", "home", () => router.back())}
             style={[styles.backHit, { top: insets.top + spacing.sm + spacing.md + 44 }]}
             hitSlop={10}
           >
@@ -207,8 +209,9 @@ export default function VehicleDetailScreen() {
       <AppTabBar
         active="index"
         onSelect={(name) => {
-          if (name === "index") playReverse(() => router.back(), state);
-          else router.replace(name === "trips" ? "/trips" : "/vehicle-info");
+          if (name === "index") play("detail", "home", () => router.back());
+          else if (name === "trips") play("detail", "trips", () => router.replace("/trips"));
+          else play("detail", "info", () => router.replace("/vehicle-info"));
         }}
       />
     </View>

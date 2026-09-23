@@ -1,7 +1,8 @@
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { api, ApiError } from "../../src/api";
+import { useCarTransition } from "../../src/components/CarTransition";
 import { FuelIcon, OdometerIcon, RangeIcon } from "../../src/components/icons";
 import { StatTile } from "../../src/components/StatTile";
 import { VehicleHeroCard } from "../../src/components/VehicleHeroCard";
@@ -13,6 +14,9 @@ export default function StatoScreen() {
   const [state, setState] = useState<VehicleState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const { play, reportVehicleState } = useCarTransition();
+
+  useEffect(() => reportVehicleState(state), [state, reportVehicleState]);
 
   const load = useCallback(async () => {
     try {
@@ -39,7 +43,9 @@ export default function StatoScreen() {
   }, [load]);
 
   // Prima tab: solo a sinistra c'e' un'altra schermata (Viaggi).
-  const swipe = useSwipeNav({ onSwipeLeft: () => router.replace("/trips") });
+  const swipe = useSwipeNav({
+    onSwipeLeft: () => play("home", "trips", () => router.replace("/trips")),
+  });
 
   return (
     <ScrollView
@@ -51,7 +57,7 @@ export default function StatoScreen() {
       {...swipe}
     >
       <View style={styles.fill}>
-        <VehicleHeroCard state={state}>
+        <VehicleHeroCard>
           {error && (
             <View style={styles.errorBanner}>
               <Text style={styles.errorText}>{error}</Text>
