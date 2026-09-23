@@ -145,35 +145,48 @@ export const DoorIcon = icon(({ color, strokeWidth }) => (
  * il colore ma il disegno stesso (la porta ruota sul cardine, il vetro
  * scende nella portiera), cosi' lo stato si legge anche in bianco e nero.
  */
+/**
+ * Portiera d'auto vista di lato: vetro con il montante inclinato in avanti,
+ * linea di cintura, maniglia. Aperta: la stessa portiera ruotata sulla
+ * cerniera, con il bordo della scocca tratteggiato da cui si e' staccata.
+ */
 export const DoorClosedIcon = icon(({ color, strokeWidth }) => (
   <>
-    <Path d="M6 20V6.8a1.6 1.6 0 0 1 1.2-1.6l8-2a1.6 1.6 0 0 1 2 1.6V20" stroke={color} strokeWidth={strokeWidth} {...S} />
-    <Line x1="4" y1="20" x2="19" y2="20" stroke={color} strokeWidth={strokeWidth} {...S} />
-    <Circle cx="14" cy="12.6" r="1" stroke={color} strokeWidth={strokeWidth} />
+    <Path d="M4.5 11.5 9 5.5h9.5a1 1 0 0 1 1 1V18a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2z" stroke={color} strokeWidth={strokeWidth} {...S} />
+    <Line x1="4.5" y1="11.5" x2="19.5" y2="11.5" stroke={color} strokeWidth={strokeWidth} {...S} />
+    <Line x1="14" y1="14.2" x2="17" y2="14.2" stroke={color} strokeWidth={strokeWidth} {...S} />
   </>
 ));
 
 export const DoorOpenIcon = icon(({ color, strokeWidth }) => (
   <>
-    <Line x1="5" y1="3.5" x2="5" y2="20" stroke={color} strokeWidth={strokeWidth} {...S} />
-    <Path d="M8.5 20V9.4a1.6 1.6 0 0 1 1.1-1.5l7-2.3A1.6 1.6 0 0 1 18.7 7.1V20" stroke={color} strokeWidth={strokeWidth} {...S} />
-    <Line x1="3" y1="20" x2="21" y2="20" stroke={color} strokeWidth={strokeWidth} {...S} />
-    <Path d="M5 6.2 8.5 9.4" stroke={color} strokeWidth={strokeWidth} strokeDasharray="1.5 2" {...S} />
+    <Line x1="4" y1="6" x2="4" y2="20" stroke={color} strokeWidth={strokeWidth} strokeDasharray="1.6 2.2" {...S} />
+    <Path d="M7.5 11.8 10.8 6.8h7.4l1.8 1.4v9.2l-2 2.4H9.3a1.8 1.8 0 0 1-1.8-1.8z" stroke={color} strokeWidth={strokeWidth} {...S} />
+    <Line x1="7.5" y1="11.8" x2="20" y2="11.8" stroke={color} strokeWidth={strokeWidth} {...S} />
+    <Line x1="13.8" y1="14.4" x2="16.6" y2="14.4" stroke={color} strokeWidth={strokeWidth} {...S} />
   </>
 ));
 
+/**
+ * Finestrino laterale: sagoma del vetro con il montante inclinato. Chiuso:
+ * due riflessi sul vetro. Aperto: vetro abbassato (bordo superiore a meta')
+ * e freccia verso il basso.
+ */
+const WINDOW_FRAME = "M3.5 17 8.6 8.2A2 2 0 0 1 10.3 7.2H18.5a1.5 1.5 0 0 1 1.5 1.5V17z";
+
 export const WindowClosedIcon = icon(({ color, strokeWidth }) => (
   <>
-    <Path d="M4 19V9.6a2 2 0 0 1 .6-1.4l3-3A2 2 0 0 1 9 4.6h6.6a2 2 0 0 1 2 2V19z" stroke={color} strokeWidth={strokeWidth} {...S} />
-    <Line x1="4" y1="16" x2="17.6" y2="16" stroke={color} strokeWidth={strokeWidth} {...S} />
+    <Path d={WINDOW_FRAME} stroke={color} strokeWidth={strokeWidth} {...S} />
+    <Line x1="10.5" y1="14.5" x2="14" y2="11" stroke={color} strokeWidth={strokeWidth} {...S} />
+    <Line x1="13.5" y1="14.5" x2="15.5" y2="12.5" stroke={color} strokeWidth={strokeWidth} {...S} />
   </>
 ));
 
 export const WindowOpenIcon = icon(({ color, strokeWidth }) => (
   <>
-    <Path d="M4 19V9.6a2 2 0 0 1 .6-1.4l3-3A2 2 0 0 1 9 4.6h6.6a2 2 0 0 1 2 2V19z" stroke={color} strokeWidth={strokeWidth} strokeDasharray="2.5 2.5" {...S} />
-    <Line x1="4" y1="16" x2="17.6" y2="16" stroke={color} strokeWidth={strokeWidth} {...S} />
-    <Path d="M10.8 8.2 14 11.4l3.2-3.2" stroke={color} strokeWidth={strokeWidth} {...S} />
+    <Path d={WINDOW_FRAME} stroke={color} strokeWidth={strokeWidth} strokeDasharray="2 2.2" {...S} />
+    <Path d="M5.7 13.2H20V17H3.5z" stroke={color} strokeWidth={strokeWidth} {...S} />
+    <Path d="M15.5 8.6v3M14.2 10.4l1.3 1.3 1.3-1.3" stroke={color} strokeWidth={strokeWidth} {...S} />
   </>
 ));
 

@@ -54,8 +54,6 @@ const HERO_ZOOM = 1.09;
 const REAR_AXLE_Y = Math.round(SCREEN_H * 0.39);
 const FRONT_AXLE_Y = Math.round(SCREEN_H * 0.63);
 const CORNER_HALF_H = 30;
-/** Subito sotto il muso dell'auto. */
-const SEGMENT_Y = Math.round(SCREEN_H * 0.715);
 /** Dove la lista comincia a salire sopra la foto. */
 const SHEET_Y = Math.round(SCREEN_H * 0.79);
 
@@ -157,6 +155,16 @@ export default function InfoVeicoloScreen() {
         <AppHeader />
         <VehicleGreeting state={vehicleState} />
 
+        {/* Selettore subito sotto il saluto, sopra l'auto. */}
+        <Animated.View style={[styles.segment, { opacity: contentOpacity }]}>
+          <SegmentButton label="Aperture" active={mode === "aperture"} onPress={() => setMode("aperture")} />
+          <SegmentButton
+            label="Manutenzione"
+            active={mode === "manutenzione"}
+            onPress={() => setMode("manutenzione")}
+          />
+        </Animated.View>
+
         <Animated.View
           style={[StyleSheet.absoluteFill, { opacity: contentOpacity }]}
           pointerEvents="box-none"
@@ -194,14 +202,14 @@ export default function InfoVeicoloScreen() {
                 ) : (
                   <View style={styles.cornerIcons}>
                     {doorOpen ? (
-                      <DoorOpenIcon size={19} color={colors.warning} strokeWidth={1.35} />
+                      <DoorOpenIcon size={23} color={colors.warning} strokeWidth={1.3} />
                     ) : (
-                      <DoorClosedIcon size={19} color="rgba(255,255,255,0.8)" strokeWidth={1.35} />
+                      <DoorClosedIcon size={23} color="rgba(255,255,255,0.8)" strokeWidth={1.3} />
                     )}
                     {windowOpen ? (
-                      <WindowOpenIcon size={19} color={colors.warning} strokeWidth={1.35} />
+                      <WindowOpenIcon size={23} color={colors.warning} strokeWidth={1.3} />
                     ) : (
-                      <WindowClosedIcon size={19} color="rgba(255,255,255,0.8)" strokeWidth={1.35} />
+                      <WindowClosedIcon size={23} color="rgba(255,255,255,0.8)" strokeWidth={1.3} />
                     )}
                   </View>
                 )}
@@ -209,14 +217,6 @@ export default function InfoVeicoloScreen() {
             );
           })}
 
-          <View style={styles.segment}>
-            <SegmentButton label="Aperture" active={mode === "aperture"} onPress={() => setMode("aperture")} />
-            <SegmentButton
-              label="Manutenzione"
-              active={mode === "manutenzione"}
-              onPress={() => setMode("manutenzione")}
-            />
-          </View>
         </Animated.View>
       </View>
 
@@ -450,8 +450,7 @@ const styles = StyleSheet.create({
   },
 
   segment: {
-    position: "absolute",
-    top: SEGMENT_Y,
+    marginTop: spacing.lg,
     flexDirection: "row",
     alignSelf: "center",
     padding: 3,
