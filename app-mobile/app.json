@@ -8,7 +8,8 @@
     "userInterfaceStyle": "dark",
     "plugins": [
       "expo-router",
-      "expo-video"
+      "expo-video",
+      "expo-font"
     ],
     "ios": {
       "supportsTablet": false,
@@ -19,6 +20,19 @@
     },
     "android": {
       "package": "it.andreadecaro.mbcompanion"
+    },
+    "owner": "money-tracker-org",
+    "runtimeVersion": {
+      "policy": "sdkVersion"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "a5618df7-594b-46ff-9722-cdb68202dee3"
+      }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/a5618df7-594b-46ff-9722-cdb68202dee3"
     }
   }
 }
