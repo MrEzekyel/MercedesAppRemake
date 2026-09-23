@@ -11,6 +11,7 @@ import json
 import logging
 import uuid
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Any
 
 from google.protobuf.json_format import MessageToDict
@@ -22,6 +23,7 @@ from .db import Database
 from .ha_compat import ConfigEntry, HomeAssistant, async_create_clientsession
 from .events import IGNITION_ON, parse_update, parse_vehicle_status_update, position
 from .mbapi.app_version import AppVersionManager
+from .mbapi.const import DOMAIN
 from .mbapi.errors import MBAuth2FAError, MBAuthError
 from .mbapi.oauth import Oauth
 from .mbapi.proto import client_pb2
@@ -36,6 +38,21 @@ _COMMAND_FINISHED = 5
 _COMMAND_FAILED = 6
 
 LOGGER = logging.getLogger(__name__)
+
+
+def register_websocket(hass: HomeAssistant, entry: ConfigEntry, websocket: Websocket) -> None:
+    """Registra il websocket dove mbapi2020 se lo aspetta in Home Assistant.
+
+    La libreria chiude di proposito la connessione dopo 30s senza messaggi ad
+    auto spenta e si riconnette 60s dopo, ma solo se il websocket risulta
+    ancora "suo" (Websocket._is_orphaned legge hass.data[DOMAIN]). Senza
+    questa registrazione ogni riconnessione veniva annullata: il backend
+    riceveva lo stato solo al primo avvio e poi restava sordo per sempre.
+    """
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = SimpleNamespace(
+        client=SimpleNamespace(websocket=websocket)
+    )
+
 
 # 1 e 2 = chiusa, 0 e 3 = aperta.
 _LOCKED_STATES = {1, 2}
@@ -93,6 +110,7 @@ class MercedesService:
             ignition_states=self._ignition_states,
             app_version=app_version,
         )
+        register_websocket(self._hass, entry, self._websocket)
         LOGGER.info("Connessione al websocket Mercedes...")
         self._silence_watchdog = asyncio.create_task(self._warn_if_silent())
         await self._websocket.async_connect(self._on_data)

@@ -34,20 +34,29 @@ async def require_token(authorization: Annotated[str | None, Header()] = None) -
         raise HTTPException(401, "Non autorizzato")
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    global _fuel_sync_task
-    await db.connect()
+async def _run_service() -> None:
     try:
         await service.start()
     except Exception:
         # L'API deve restare in piedi anche se Mercedes rifiuta la connessione,
         # altrimenti non si riesce nemmeno a leggere i viaggi gia' registrati.
         LOGGER.exception("Connessione a Mercedes fallita; API attiva in sola lettura")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global _fuel_sync_task
+    await db.connect()
+    # In background: service.start() resta in attesa finche' dura la prima
+    # connessione al websocket. Awaitato qui, l'API non rispondeva fino al
+    # primo distacco — e se il backend partiva ad auto accesa, per tutto
+    # il viaggio.
+    service_task = asyncio.create_task(_run_service())
     _fuel_sync_task = asyncio.create_task(mimit.sync_loop(db))
     yield
     _fuel_sync_task.cancel()
     await service.stop()
+    service_task.cancel()
     await db.close()
 
 
