@@ -17,28 +17,33 @@
  */
 import { createContext, useCallback, useContext, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { Animated, Easing, StyleSheet } from "react-native";
+import { Animated, Easing, StyleSheet, View } from "react-native";
 import { useVideoPlayer, VideoView } from "expo-video";
+import type { VehicleState } from "../types";
+import { AppHeader } from "./AppHeader";
+import { AppTabBar } from "./AppTabBar";
+import { VehicleGreeting } from "./VehicleGreeting";
 
 type Direction = "forward" | "reverse" | null;
 
 interface CarTransitionApi {
-  /** Home -> dettaglio. */
-  playForward: (onDone: () => void) => void;
+  /**
+   * Home -> dettaglio. `state` e' lo stato veicolo gia' a schermo: serve a
+   * ridisegnare il saluto sopra il video identico a quello sotto.
+   */
+  playForward: (onDone: () => void, state: VehicleState | null) => void;
   /** Dettaglio -> Home, stesso principio al contrario. */
-  playReverse: (onDone: () => void) => void;
+  playReverse: (onDone: () => void, state: VehicleState | null) => void;
+  /** Ultimo stato passato a una transizione: il dettaglio parte da qui. */
+  getLastVehicleState: () => VehicleState | null;
   /**
    * Opacita' condivisa per il contenuto "informativo" sovrapposto alla
-   * foto/video (testo, pannello comandi, statistiche) — non per la
-   * fotografia stessa, che sta gia' sotto ed e' sempre visibile. Resta a 1
-   * fuori da una transizione; viene azzerata all'inizio di un tocco
-   * sull'auto e riportata a 1 in dissolvenza mentre il video sfuma,
-   * cosi' la UI della schermata di arrivo non "compare di scatto" ma si
-   * materializza insieme allo svanire del video. E' condivisa (un solo
-   * valore, non uno per schermata) perche' a ogni transizione solo la
-   * schermata di ARRIVO deve restare invisibile finche' non tocca a lei;
-   * quella di partenza e' comunque coperta dal video sopra, quindi non
-   * importa se anche lei e' agganciata allo stesso valore.
+   * foto (pannello comandi, statistiche) — non per la foto, ne' per
+   * header, saluto e tab bar, che restano fermi. Resta a 1 fuori da una
+   * transizione; viene azzerata al tocco e riportata a 1 in dissolvenza
+   * dopo il taglio video -> foto. E' condivisa perche' a ogni transizione
+   * solo la schermata di ARRIVO deve restare invisibile finche' non tocca
+   * a lei; quella di partenza e' comunque coperta dal video.
    */
   contentOpacity: Animated.Value;
 }
@@ -58,13 +63,18 @@ const FORWARD_SOURCE = require("../../assets/vehicle/detail-forward.mp4");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const REVERSE_SOURCE = require("../../assets/vehicle/detail-reverse.mp4");
 
-// Deve combaciare con la durata reale dei due file mp4 (0,75s, vedi il
-// comando ffmpeg usato per generarli).
+// Durata dei due mp4. Il taglio video -> foto avviene su playToEnd, non
+// su questo valore: qui serve per lo zoom e come rete di sicurezza.
 const CLIP_DURATION_MS = 750;
+// Largo: al primo avvio dopo il lancio il player puo' metterci ~1,3s.
+const END_FALLBACK_MS = 2500;
 
-// Durata della dissolvenza della UI (testo, pannello comandi, statistiche)
-// DOPO che il video e' sparito — non del video stesso, che non sfuma mai
-// (vedi il commento su overlayOpacity piu' sotto).
+// Stessa curva con cui sono stati ritemporizzati i due mp4 (ease-in-out
+// sinusoidale): lo zoom accelera e rallenta insieme all'auto.
+const CLIP_EASING = Easing.inOut(Easing.sin);
+
+// Dissolvenza della UI (pannello, statistiche) DOPO il taglio — mai del
+// video, che non sfuma (vedi overlayOpacity).
 const FADE_MS = 220;
 
 // Le due schermate statiche zoomano la foto di una quantita' leggermente
@@ -77,18 +87,17 @@ const DETAIL_ZOOM = 1.06;
 
 export function CarTransitionProvider({ children }: { children: ReactNode }) {
   const [direction, setDirection] = useState<Direction>(null);
-  const endTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [lastVehicleState, setLastVehicleState] = useState<VehicleState | null>(null);
+  // Anche in un ref: il dettaglio lo legge al primo render, che puo'
+  // avvenire prima che lo useState qui sopra sia stato applicato.
+  const lastVehicleStateRef = useRef<VehicleState | null>(null);
+  const getLastVehicleState = useCallback(() => lastVehicleStateRef.current, []);
+  const cleanup = useRef<(() => void) | null>(null);
   const zoom = useRef(new Animated.Value(HOME_ZOOM)).current;
-  // Non sfuma MAI: o e' invisibile a riposo (0, video smontato/coperto)
-  // o e' del tutto opaca per l'intera durata della clip (1). Il video e
-  // la foto sotto sono lo stesso identico fotogramma, quindi passare
-  // dall'uno all'altra di scatto (setDirection(null), niente Animated fra
-  // mezzo) e' un taglio invisibile — mentre sfumare l'opacita' del video
-  // lascia vedere in trasparenza quello che c'e' dietro nel frattempo
-  // (spesso ancora la schermata di partenza, non quella di arrivo: e' il
-  // lampo che si vedeva prima). La dissolvenza vera sta solo su
-  // contentOpacity, che e' testo sopra una foto gia' ferma, mai sopra un
-  // taglio fra due immagini diverse.
+  // Non sfuma MAI: o e' invisibile a riposo o del tutto opaca per l'intera
+  // clip. Video e foto sotto sono lo stesso fotogramma, quindi il passaggio
+  // di scatto e' invisibile; sfumarlo lascerebbe vedere in trasparenza
+  // quello che c'e' dietro nel frattempo.
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   const contentOpacity = useRef(new Animated.Value(1)).current;
 
@@ -102,8 +111,60 @@ export function CarTransitionProvider({ children }: { children: ReactNode }) {
   });
 
   const run = useCallback(
-    (which: Direction, player: typeof forwardPlayer, from: number, to: number, onDone: () => void) => {
-      if (endTimer.current) clearTimeout(endTimer.current);
+    (
+      which: Direction,
+      player: typeof forwardPlayer,
+      from: number,
+      to: number,
+      onDone: () => void,
+      state: VehicleState | null
+    ) => {
+      cleanup.current?.();
+
+      lastVehicleStateRef.current = state;
+      setLastVehicleState(state);
+      overlayOpacity.setValue(1);
+      contentOpacity.setValue(0);
+      zoom.setValue(from);
+
+      // Lo zoom parte subito, non su playingChange: misurato, il player
+      // arriva in fondo ~770ms dopo il tocco (parte quasi subito), mentre
+      // l'evento playingChange arriva solo dopo ~230ms. Aspettarlo lasciava
+      // lo zoom a meta' strada al momento del taglio.
+      Animated.timing(zoom, {
+        toValue: to,
+        duration: CLIP_DURATION_MS,
+        easing: CLIP_EASING,
+        useNativeDriver: true,
+      }).start();
+
+      // Il video sparisce di colpo quando e' davvero arrivato all'ultimo
+      // fotogramma (identico alla foto sotto), non dopo 750ms fissi: con
+      // un timer, se il player partiva in ritardo, il taglio arrivava a
+      // video non ancora finito e l'auto "saltava" all'immagine finale.
+      let finished = false;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        cleanup.current?.();
+        cleanup.current = null;
+        zoom.stopAnimation();
+        zoom.setValue(to);
+        setDirection(null);
+        Animated.timing(contentOpacity, {
+          toValue: 1,
+          duration: FADE_MS,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }).start();
+      };
+
+      const endSub = player.addListener("playToEnd", finish);
+      const endFallback = setTimeout(finish, END_FALLBACK_MS);
+      cleanup.current = () => {
+        endSub.remove();
+        clearTimeout(endFallback);
+      };
 
       // replay() riavvolge e basta ("Seeks the playback to the beginning"
       // nei tipi di expo-video): NON fa ripartire la riproduzione. play()
@@ -112,75 +173,31 @@ export function CarTransitionProvider({ children }: { children: ReactNode }) {
       player.play();
       setDirection(which);
 
-      // Opaco per l'intera durata della clip, mai sfumato (vedi il
-      // commento sulla dichiarazione di overlayOpacity).
-      overlayOpacity.setValue(1);
-      contentOpacity.setValue(0);
-      // Easing.out invece di lineare: parte spedito, rallenta verso la
-      // fine invece di fermarsi di colpo alla stessa velocita' con cui
-      // stava andando — e' quel taglio secco di velocita' a fine curva
-      // lineare a sembrare uno scatto, non la durata in se'. Stessi
-      // 750ms totali, solo la distribuzione del movimento cambia.
-      zoom.setValue(from);
-      Animated.timing(zoom, {
-        toValue: to,
-        duration: CLIP_DURATION_MS,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: true,
-      }).start();
-
-      // Si naviga SUBITO, non alla fine: il video resta opaco per tutta
-      // la sua durata e copre lo schermo, quindi la schermata di arrivo
-      // ha l'intera durata della clip (non solo l'ultima fetta) per
-      // montarsi sotto senza che si veda nulla. E' quello che evita il
-      // lampo della schermata di partenza: prima si navigava tardi e si
-      // sfumava subito, lasciando una finestra in cui il video era
-      // semi-trasparente ma la schermata di arrivo non era ancora pronta.
+      // Si naviga SUBITO: il video copre lo schermo per tutta la clip, e
+      // la schermata di arrivo ha tutto quel tempo per montarsi sotto.
       onDone();
-
-      // Alla fine esatta della clip il video sparisce di colpo — un
-      // taglio, non una dissolvenza, perche' e' lo stesso fotogramma
-      // della foto sotto — e la UI della schermata di arrivo (sola, non
-      // l'immagine) comincia a comparire.
-      endTimer.current = setTimeout(() => {
-        setDirection(null);
-        Animated.timing(contentOpacity, {
-          toValue: 1,
-          duration: FADE_MS,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        }).start();
-      }, CLIP_DURATION_MS);
     },
     [zoom, overlayOpacity, contentOpacity]
   );
 
   const playForward = useCallback(
-    (onDone: () => void) => run("forward", forwardPlayer, HOME_ZOOM, DETAIL_ZOOM, onDone),
+    (onDone: () => void, state: VehicleState | null) =>
+      run("forward", forwardPlayer, HOME_ZOOM, DETAIL_ZOOM, onDone, state),
     [run, forwardPlayer]
   );
 
   const playReverse = useCallback(
-    (onDone: () => void) => run("reverse", reversePlayer, DETAIL_ZOOM, HOME_ZOOM, onDone),
+    (onDone: () => void, state: VehicleState | null) =>
+      run("reverse", reversePlayer, DETAIL_ZOOM, HOME_ZOOM, onDone, state),
     [run, reversePlayer]
   );
 
   return (
-    <CarTransitionContext.Provider value={{ playForward, playReverse, contentOpacity }}>
+    <CarTransitionContext.Provider
+      value={{ playForward, playReverse, getLastVehicleState, contentOpacity }}
+    >
       {children}
-      {/*
-        La VideoView viene creata SOLO durante una transizione, non
-        restituita sempre e nascosta con opacity/pointerEvents. Quella
-        versione (pensata per eliminare la latenza di montaggio, qualche
-        decina di ms che su una clip da 750ms si mangiava i primi
-        fotogrammi) era in scena durante una sessione di test in cui
-        molti tocchi in giro per l'app hanno smesso di rispondere — non
-        e' stato possibile isolare con certezza se la causa fosse questa
-        o l'automazione del simulatore, diventata inaffidabile nella
-        stessa sessione (persino la cattura schermo del tool si e' messa
-        a fallire). Smontare la view a riposo resta la scelta piu' sicura
-        finche' non si puo' riverificare con calma su un dispositivo vero.
-      */}
+      {/* VideoView montata solo durante una transizione, smontata a riposo. */}
       {direction && (
         <Animated.View
           style={[StyleSheet.absoluteFill, { opacity: overlayOpacity, transform: [{ scale: zoom }] }]}
@@ -193,6 +210,18 @@ export function CarTransitionProvider({ children }: { children: ReactNode }) {
             nativeControls={false}
           />
         </Animated.View>
+      )}
+      {/*
+        Header, saluto e tab bar sono identici nelle due schermate: il video
+        vive in radice e altrimenti li coprirebbe per tutta la clip. Li
+        ridisegna sopra, con gli stessi componenti, cosi' restano fermi.
+      */}
+      {direction && (
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <AppHeader />
+          <VehicleGreeting state={lastVehicleState} />
+          <AppTabBar active="index" />
+        </View>
       )}
     </CarTransitionContext.Provider>
   );

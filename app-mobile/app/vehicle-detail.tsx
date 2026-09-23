@@ -6,6 +6,7 @@ import { Animated, ImageBackground, Pressable, ScrollView, StyleSheet, Text, Vie
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, ApiError, type CommandResult } from "../src/api";
 import { AppHeader } from "../src/components/AppHeader";
+import { AppTabBar } from "../src/components/AppTabBar";
 import { useCarTransition } from "../src/components/CarTransition";
 import {
   ChevronIcon,
@@ -14,12 +15,10 @@ import {
   type IconProps,
   LightIcon,
   LockIcon,
-  OdometerIcon,
-  RouteIcon,
-  TireIcon,
   UnlockIcon,
   WindowIcon,
 } from "../src/components/icons";
+import { VehicleGreeting } from "../src/components/VehicleGreeting";
 import { colors, radius, spacing } from "../src/theme";
 import type { TripSummary, VehicleState } from "../src/types";
 import { useSwipeNav } from "../src/useSwipeNav";
@@ -39,8 +38,10 @@ function sleep(ms: number): Promise<void> {
  */
 export default function VehicleDetailScreen() {
   const insets = useSafeAreaInsets();
-  const { playReverse, contentOpacity } = useCarTransition();
-  const [state, setState] = useState<VehicleState | null>(null);
+  const { playReverse, contentOpacity, getLastVehicleState } = useCarTransition();
+  // Parte dallo stato gia' mostrato in Home: il saluto resta fermo sopra il
+  // video, e se qui partisse da null al taglio cambierebbe testo di colpo.
+  const [state, setState] = useState<VehicleState | null>(getLastVehicleState);
   const [lastTrip, setLastTrip] = useState<TripSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<CommandKey | null>(null);
@@ -96,7 +97,7 @@ export default function VehicleDetailScreen() {
   // Come il pulsante indietro: swipe a destra riporta a Home con lo
   // stesso video al contrario. A sinistra non c'e' nulla, e' l'ultima
   // schermata di questo ramo.
-  const swipe = useSwipeNav({ onSwipeRight: () => playReverse(() => router.back()) });
+  const swipe = useSwipeNav({ onSwipeRight: () => playReverse(() => router.back(), state) });
 
   return (
     <View style={styles.screen} {...swipe}>
@@ -106,25 +107,20 @@ export default function VehicleDetailScreen() {
         style={styles.hero}
         imageStyle={styles.heroImage}
       >
-        {/* Fisso come la tab bar: non e' "contenuto" della schermata, e'
-            la stessa navigazione presente ovunque, quindi non deve
-            sparire ne' rifare un fade-in proprio ogni volta. */}
+        {/* Header e saluto identici a Home e ridisegnati sopra il video:
+            restano fermi, non sfumano mai. */}
         <AppHeader />
+        <VehicleGreeting state={state} />
 
-        <Animated.View style={[styles.dynamicLayer, { opacity: contentOpacity }]}>
-          <View style={styles.titleBlock}>
-            <Text style={styles.title}>{state?.display_name ?? "Classe A Premium"}</Text>
-            <Text style={styles.subtitle}>
-              {locked === null || locked === undefined
-                ? "Stato sconosciuto"
-                : locked
-                  ? "Chiusa e sorvegliata"
-                  : "Aperta"}
-            </Text>
-          </View>
-
+        {/* A tutto schermo come prima: backHit, panelWrap e footer sono
+            posizionati rispetto allo schermo intero, non a cio' che resta
+            sotto header e saluto. box-none: lo strato non ruba i tocchi. */}
+        <Animated.View
+          style={[StyleSheet.absoluteFill, { opacity: contentOpacity }]}
+          pointerEvents="box-none"
+        >
           <Pressable
-            onPress={() => playReverse(() => router.back())}
+            onPress={() => playReverse(() => router.back(), state)}
             style={[styles.backHit, { top: insets.top + spacing.sm + spacing.md + 44 }]}
             hitSlop={10}
           >
@@ -207,45 +203,15 @@ export default function VehicleDetailScreen() {
         </Animated.View>
       </ImageBackground>
 
-      {/* Stessa tab bar delle altre tre schermate: questa e' concettualmente
-          il dettaglio della tab "Auto", non una schermata a se', quindi la
-          barra deve restare visibile qui come lo e' ovunque altro. Non
-          sfuma con il resto (e' chrome persistente, come sulle altre tab). */}
-      <View style={[styles.tabBar, { paddingBottom: insets.bottom || spacing.sm }]}>
-        <TabBarButton
-          Icon={OdometerIcon}
-          label="Auto"
-          active
-          onPress={() => playReverse(() => router.back())}
-        />
-        <TabBarButton Icon={RouteIcon} label="Viaggi" onPress={() => router.replace("/trips")} />
-        <TabBarButton
-          Icon={TireIcon}
-          label="Info veicolo"
-          onPress={() => router.replace("/vehicle-info")}
-        />
-      </View>
+      {/* Dettaglio della tab "Auto": stessa tab bar, mai sfumata. */}
+      <AppTabBar
+        active="index"
+        onSelect={(name) => {
+          if (name === "index") playReverse(() => router.back(), state);
+          else router.replace(name === "trips" ? "/trips" : "/vehicle-info");
+        }}
+      />
     </View>
-  );
-}
-
-function TabBarButton({
-  Icon,
-  label,
-  active,
-  onPress,
-}: {
-  Icon: ComponentType<IconProps>;
-  label: string;
-  active?: boolean;
-  onPress: () => void;
-}) {
-  const color = active ? colors.textPrimary : "rgba(255,255,255,0.38)";
-  return (
-    <Pressable onPress={onPress} style={styles.tabButton} hitSlop={8}>
-      <Icon size={21} color={color} strokeWidth={1.4} />
-      <Text style={[styles.tabLabel, { color }]}>{label}</Text>
-    </Pressable>
   );
 }
 
@@ -302,11 +268,6 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   hero: { flex: 1, width: "100%" },
   heroImage: { resizeMode: "cover", transform: [{ scale: 1.06 }] },
-  dynamicLayer: { flex: 1 },
-
-  titleBlock: { alignItems: "center", marginTop: spacing.md, paddingHorizontal: spacing.xl },
-  title: { fontSize: 22, fontWeight: "600", color: colors.textPrimary, textAlign: "center" },
-  subtitle: { fontSize: 13, color: colors.textSecondary, marginTop: 5 },
 
   /** Rotazione di 180°: un solo glifo chevron serve per tutte le direzioni. */
   backHit: { position: "absolute", left: spacing.md },
@@ -388,19 +349,4 @@ const styles = StyleSheet.create({
   },
   hairline: { width: 1, height: 30, backgroundColor: "rgba(255,255,255,0.13)" },
   errorText: { fontSize: 12, color: colors.danger, textAlign: "center" },
-
-  /** Stessi valori della tab bar reale in (tabs)/_layout.tsx. */
-  tabBar: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    flexDirection: "row",
-    backgroundColor: "rgba(6,9,16,0.82)",
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(255,255,255,0.08)",
-    paddingTop: spacing.sm,
-  },
-  tabButton: { flex: 1, alignItems: "center", gap: 3 },
-  tabLabel: { fontSize: 10, letterSpacing: 0.4, fontWeight: "500" },
 });

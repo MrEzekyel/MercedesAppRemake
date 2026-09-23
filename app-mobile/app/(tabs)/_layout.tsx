@@ -1,48 +1,25 @@
 import { Tabs } from "expo-router";
-import { OdometerIcon, RouteIcon, TireIcon } from "../../src/components/icons";
-import { colors } from "../../src/theme";
+import { AppTabBar, type TabName } from "../../src/components/AppTabBar";
 
 /**
  * Tutte e tre le schermate hanno la fotografia a tutto schermo e si
- * disegnano l'intestazione da sole: nessuna header di sistema, e la tab bar
- * e' trasparente per non tagliare l'immagine con una fascia piena.
+ * disegnano l'intestazione da sole: nessuna header di sistema. La tab bar
+ * e' AppTabBar, la stessa del dettaglio veicolo e del video di transizione.
  */
 export default function TabsLayout() {
   return (
     <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarStyle: {
-          position: "absolute",
-          backgroundColor: "rgba(6,9,16,0.82)",
-          borderTopColor: "rgba(255,255,255,0.08)",
-        },
-        tabBarActiveTintColor: colors.textPrimary,
-        tabBarInactiveTintColor: "rgba(255,255,255,0.38)",
-        tabBarLabelStyle: { fontSize: 10, letterSpacing: 0.4, fontWeight: "500" },
-      }}
+      screenOptions={{ headerShown: false }}
+      tabBar={({ state, navigation }) => (
+        <AppTabBar
+          active={state.routes[state.index].name as TabName}
+          onSelect={(name) => navigation.navigate(name)}
+        />
+      )}
     >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: "Auto",
-          tabBarIcon: ({ color }) => <OdometerIcon size={21} color={color} strokeWidth={1.4} />,
-        }}
-      />
-      <Tabs.Screen
-        name="trips"
-        options={{
-          title: "Viaggi",
-          tabBarIcon: ({ color }) => <RouteIcon size={21} color={color} strokeWidth={1.4} />,
-        }}
-      />
-      <Tabs.Screen
-        name="vehicle-info"
-        options={{
-          title: "Info veicolo",
-          tabBarIcon: ({ color }) => <TireIcon size={21} color={color} strokeWidth={1.4} />,
-        }}
-      />
+      <Tabs.Screen name="index" options={{ title: "Auto" }} />
+      <Tabs.Screen name="trips" options={{ title: "Viaggi" }} />
+      <Tabs.Screen name="vehicle-info" options={{ title: "Info veicolo" }} />
     </Tabs>
   );
 }
