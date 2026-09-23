@@ -14,13 +14,15 @@ import { colors, radius, spacing } from "../../src/theme";
 import type { Refuel, TripSummary, VehicleState } from "../../src/types";
 import { useSwipeNav } from "../../src/useSwipeNav";
 
-const { width: SCREEN_W } = Dimensions.get("window");
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 /**
- * Lo scatto e' 768x1376: tiene le sue proporzioni a larghezza piena, cosi'
- * non viene tagliato, e il contenuto parte sotto l'auto.
+ * Foto a tutto schermo con lo stesso zoom della Home: e' l'ultimo
+ * fotogramma del video di transizione, quindi il passaggio video -> foto
+ * non ha scatti. L'auto e' gia' inquadrata in alto nello scatto stesso.
  */
-const IMAGE_H = Math.round(SCREEN_W * (1376 / 768));
-const SHEET_TOP = Math.round(IMAGE_H * 0.72) - 160;
+const HERO_ZOOM = 1.09;
+/** Dove comincia la lista, che copre il fondo della foto. */
+const SHEET_TOP = Math.round(SCREEN_W * (1928 / 1076) * 0.72) - 160;
 
 /**
  * Casa dei viaggi: in evidenza l'ultimo, poi la porta verso i consumi, poi
@@ -67,7 +69,7 @@ export default function ViaggiScreen() {
     <View style={styles.screen}>
       <Image
         // eslint-disable-next-line @typescript-eslint/no-require-imports
-        source={require("../../assets/vehicle/trips-hero.webp")}
+        source={require("../../assets/vehicle/trips.jpg")}
         style={styles.hero}
         resizeMode="cover"
       />
@@ -230,7 +232,14 @@ function fmtDuration(seconds: number | null): string {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  hero: { position: "absolute", top: 0, left: 0, width: SCREEN_W, height: IMAGE_H },
+  hero: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    width: SCREEN_W,
+    height: SCREEN_H,
+    transform: [{ scale: HERO_ZOOM }],
+  },
   content: { paddingBottom: 110 },
 
   sheet: { marginTop: SHEET_TOP },

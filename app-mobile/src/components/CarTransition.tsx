@@ -13,7 +13,7 @@
  */
 import { createContext, useCallback, useContext, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { Animated, Dimensions, Easing, StyleSheet, View } from "react-native";
+import { Animated, Easing, StyleSheet, View } from "react-native";
 import { useVideoPlayer, VideoView, type VideoPlayer } from "expo-video";
 import { colors } from "../theme";
 import type { VehicleState } from "../types";
@@ -59,38 +59,16 @@ export function useCarTransition(): CarTransitionApi {
 }
 
 /**
- * Come la clip va sovrapposta allo schermo perche' combaci con la foto
- * della schermata. Il video e' disegnato a tutto schermo in modalita'
- * "cover" e poi scalato/spostato dal centro.
+ * Zoom con cui ogni schermata mostra la sua foto a tutto schermo ("cover",
+ * scalata dal centro) per togliere il bordo dello scatto. Il video e'
+ * disegnato allo stesso modo e passa dallo zoom di partenza a quello di
+ * arrivo, cosi' primo e ultimo fotogramma combaciano con le foto.
  */
-interface Layout {
-  scale: number;
-  translateY: number;
-}
-
-// Proporzioni comuni a tutte le clip e a tutte le foto (1076x1928,
-// 1116x2000, 768x1376: stesso rapporto).
-const CLIP_ASPECT = 1076 / 1928;
-
-function tripsLayout(): Layout {
-  // In Viaggi la foto non e' a tutto schermo: e' larga quanto lo schermo e
-  // appoggiata in alto (vedi IMAGE_H in trips.tsx), la lista ne copre il
-  // fondo. Il video "cover" e' invece alto quanto lo schermo e centrato.
-  const { width: W, height: H } = Dimensions.get("window");
-  // Il video e' scalato attorno al centro dello schermo e poi spostato:
-  // largo quanto lo schermo, con il centro a meta' dell'altezza della foto.
-  const coverWidth = Math.max(W, H * CLIP_ASPECT);
-  const photoHeight = W / CLIP_ASPECT;
-  return { scale: W / coverWidth, translateY: photoHeight / 2 - H / 2 };
-}
-
-// Zoom con cui le foto statiche tolgono il bordo dello scatto
-// (VehicleHeroCard.tsx e vehicle-info.tsx 1.09, vehicle-detail.tsx 1.06).
-const LAYOUTS: Record<Scene, () => Layout> = {
-  home: () => ({ scale: 1.09, translateY: 0 }),
-  detail: () => ({ scale: 1.06, translateY: 0 }),
-  trips: tripsLayout,
-  info: () => ({ scale: 1.09, translateY: 0 }),
+const ZOOM: Record<Scene, number> = {
+  home: 1.09,
+  detail: 1.06,
+  trips: 1.09,
+  info: 1.09,
 };
 
 interface Clip {
@@ -184,7 +162,6 @@ export function CarTransitionProvider({ children }: { children: ReactNode }) {
   }, []);
   const cleanup = useRef<(() => void) | null>(null);
   const scale = useRef(new Animated.Value(1.09)).current;
-  const translateY = useRef(new Animated.Value(0)).current;
   const contentOpacity = useRef(new Animated.Value(1)).current;
   const players = usePlayers();
   // In un ref: i player sono sempre gli stessi, ma l'oggetto che li raccoglie
@@ -204,29 +181,25 @@ export function CarTransitionProvider({ children }: { children: ReactNode }) {
 
       contentOpacity.setValue(0);
 
-      const layouts = clip.path.map((scene) => LAYOUTS[scene]());
-      scale.setValue(layouts[0].scale);
-      translateY.setValue(layouts[0].translateY);
-      // Zoom e spostamento partono subito: il player arriva in fondo ~20ms
-      // dopo la durata della clip (misurato), l'evento playingChange invece
-      // arriva ~230ms dopo il tocco — aspettarlo lascerebbe lo zoom indietro.
-      const segments = clip.durations.map((duration, i) =>
-        Animated.parallel(
-          (
-            [
-              [scale, layouts[i + 1].scale],
-              [translateY, layouts[i + 1].translateY],
-            ] as const
-          ).map(([value, toValue]) =>
-            Animated.timing(value, { toValue, duration, easing: CLIP_EASING, useNativeDriver: true })
-          )
+      const zooms = clip.path.map((scene) => ZOOM[scene]);
+      scale.setValue(zooms[0]);
+      // Lo zoom parte subito: il player arriva in fondo ~20ms dopo la durata
+      // della clip (misurato), l'evento playingChange invece arriva ~230ms
+      // dopo il tocco — aspettarlo lascerebbe lo zoom indietro.
+      Animated.sequence(
+        clip.durations.map((duration, i) =>
+          Animated.timing(scale, {
+            toValue: zooms[i + 1],
+            duration,
+            easing: CLIP_EASING,
+            useNativeDriver: true,
+          })
         )
-      );
-      Animated.sequence(segments).start();
+      ).start();
 
       // Il video sparisce di colpo quando e' davvero arrivato all'ultimo
       // fotogramma (identico alla foto sotto), non dopo un tempo fisso.
-      const last = layouts[layouts.length - 1];
+      const lastZoom = zooms[zooms.length - 1];
       let finished = false;
       const finish = () => {
         if (finished) return;
@@ -234,9 +207,7 @@ export function CarTransitionProvider({ children }: { children: ReactNode }) {
         cleanup.current?.();
         cleanup.current = null;
         scale.stopAnimation();
-        translateY.stopAnimation();
-        scale.setValue(last.scale);
-        translateY.setValue(last.translateY);
+        scale.setValue(lastZoom);
         setActive(null);
         Animated.timing(contentOpacity, {
           toValue: 1,
@@ -264,7 +235,7 @@ export function CarTransitionProvider({ children }: { children: ReactNode }) {
       // schermata di arrivo ha tutto quel tempo per montarsi sotto.
       onDone();
     },
-    [scale, translateY, contentOpacity]
+    [scale, contentOpacity]
   );
 
   return (
@@ -272,13 +243,12 @@ export function CarTransitionProvider({ children }: { children: ReactNode }) {
       {children}
       {active && (
         <>
-          {/* Fondo scuro: quando il video non copre tutto lo schermo (foto di
-              Viaggi, appoggiata in alto) la fascia libera resta scura come
-              lo sfondo di Viaggi, invece di mostrare la schermata sotto. */}
+          {/* Fondo scuro sotto il video: blocca i tocchi durante la
+              transizione e non lascia mai intravedere la schermata sotto. */}
           <View style={[StyleSheet.absoluteFill, styles.backdrop]} pointerEvents="auto" />
           {/* VideoView montata solo durante una transizione, smontata a riposo. */}
           <Animated.View
-            style={[StyleSheet.absoluteFill, { transform: [{ translateY }, { scale }] }]}
+            style={[StyleSheet.absoluteFill, { transform: [{ scale }] }]}
             pointerEvents="none"
           >
             <VideoView
