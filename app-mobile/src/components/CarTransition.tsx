@@ -106,8 +106,8 @@ const CLIPS: Record<string, Clip> = {
   "detail>home": { source: require("../../assets/vehicle/detail-reverse.mp4"), path: ["detail", "home"], durations: [750] },
   "home>trips": { source: require("../../assets/vehicle/trips-forward.mp4"), path: ["home", "trips"], durations: [500] },
   "trips>home": { source: require("../../assets/vehicle/trips-reverse.mp4"), path: ["trips", "home"], durations: [500] },
-  "home>info": { source: require("../../assets/vehicle/info-forward.mp4"), path: ["home", "info"], durations: [750] },
-  "info>home": { source: require("../../assets/vehicle/info-reverse.mp4"), path: ["info", "home"], durations: [750] },
+  "home>info": { source: require("../../assets/vehicle/info-forward.mp4"), path: ["home", "info"], durations: [500] },
+  "info>home": { source: require("../../assets/vehicle/info-reverse.mp4"), path: ["info", "home"], durations: [500] },
   // Fra due schermate diverse da Home si ripassa dalla sua vista frontale,
   // senza mostrarne la UI: le due clip sono gia' unite in un solo file,
   // cosi' non c'e' esitazione nel passaggio da un video all'altro.
@@ -119,17 +119,17 @@ const CLIPS: Record<string, Clip> = {
   "detail>info": {
     source: require("../../assets/vehicle/detail-to-info.mp4"),
     path: ["detail", "home", "info"],
-    durations: [750, 750],
+    durations: [750, 500],
   },
   "trips>info": {
     source: require("../../assets/vehicle/trips-to-info.mp4"),
     path: ["trips", "home", "info"],
-    durations: [500, 750],
+    durations: [500, 500],
   },
   "info>trips": {
     source: require("../../assets/vehicle/info-to-trips.mp4"),
     path: ["info", "home", "trips"],
-    durations: [750, 500],
+    durations: [500, 500],
   },
 };
 /* eslint-enable @typescript-eslint/no-require-imports */
