@@ -40,9 +40,12 @@ export function VehicleHeroCard({ state, children }: Props) {
         style={styles.hero}
         imageStyle={styles.heroImage}
       >
-        <Animated.View style={{ opacity: contentOpacity }}>
-          <AppHeader />
+        {/* Header fisso, come la tab bar: non e' "contenuto" della
+            schermata, e' la stessa navigazione presente ovunque, che
+            quindi non deve mai sparire ne' rifare un fade-in proprio. */}
+        <AppHeader />
 
+        <Animated.View style={{ opacity: contentOpacity }}>
           <View style={styles.greeting}>
             <Text style={styles.greetingSmall}>Ciao Andrea</Text>
             <Text style={styles.name}>{state?.display_name ?? "Classe A Premium"}</Text>

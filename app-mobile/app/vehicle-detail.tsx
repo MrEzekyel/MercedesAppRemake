@@ -106,9 +106,12 @@ export default function VehicleDetailScreen() {
         style={styles.hero}
         imageStyle={styles.heroImage}
       >
-        <Animated.View style={[styles.dynamicLayer, { opacity: contentOpacity }]}>
-          <AppHeader />
+        {/* Fisso come la tab bar: non e' "contenuto" della schermata, e'
+            la stessa navigazione presente ovunque, quindi non deve
+            sparire ne' rifare un fade-in proprio ogni volta. */}
+        <AppHeader />
 
+        <Animated.View style={[styles.dynamicLayer, { opacity: contentOpacity }]}>
           <View style={styles.titleBlock}>
             <Text style={styles.title}>{state?.display_name ?? "Classe A Premium"}</Text>
             <Text style={styles.subtitle}>

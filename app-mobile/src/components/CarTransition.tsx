@@ -116,11 +116,16 @@ export function CarTransitionProvider({ children }: { children: ReactNode }) {
       // commento sulla dichiarazione di overlayOpacity).
       overlayOpacity.setValue(1);
       contentOpacity.setValue(0);
+      // Easing.out invece di lineare: parte spedito, rallenta verso la
+      // fine invece di fermarsi di colpo alla stessa velocita' con cui
+      // stava andando — e' quel taglio secco di velocita' a fine curva
+      // lineare a sembrare uno scatto, non la durata in se'. Stessi
+      // 750ms totali, solo la distribuzione del movimento cambia.
       zoom.setValue(from);
       Animated.timing(zoom, {
         toValue: to,
         duration: CLIP_DURATION_MS,
-        easing: Easing.linear,
+        easing: Easing.out(Easing.quad),
         useNativeDriver: true,
       }).start();
 
@@ -164,34 +169,31 @@ export function CarTransitionProvider({ children }: { children: ReactNode }) {
     <CarTransitionContext.Provider value={{ playForward, playReverse, contentOpacity }}>
       {children}
       {/*
-        Le due VideoView restano montate sempre, invisibili a riposo
-        (overlayOpacity 0) invece di essere create al momento del tocco:
-        creare la view nativa e agganciarla al player costa qualche
-        decina di millisecondi, che su una clip da 750ms si mangiava i
-        primi fotogrammi del giro. pointerEvents "none" a riposo lascia
-        passare i tocchi alle schermate sotto.
+        La VideoView viene creata SOLO durante una transizione, non
+        restituita sempre e nascosta con opacity/pointerEvents. Quella
+        versione (pensata per eliminare la latenza di montaggio, qualche
+        decina di ms che su una clip da 750ms si mangiava i primi
+        fotogrammi) era in scena durante una sessione di test in cui
+        molti tocchi in giro per l'app hanno smesso di rispondere — non
+        e' stato possibile isolare con certezza se la causa fosse questa
+        o l'automazione del simulatore, diventata inaffidabile nella
+        stessa sessione (persino la cattura schermo del tool si e' messa
+        a fallire). Smontare la view a riposo resta la scelta piu' sicura
+        finche' non si puo' riverificare con calma su un dispositivo vero.
       */}
-      <Animated.View
-        style={[StyleSheet.absoluteFill, { opacity: overlayOpacity, transform: [{ scale: zoom }] }]}
-        pointerEvents={direction ? "auto" : "none"}
-      >
-        <VideoView
-          player={forwardPlayer}
-          style={[StyleSheet.absoluteFill, direction === "forward" ? null : styles.hidden]}
-          contentFit="cover"
-          nativeControls={false}
-        />
-        <VideoView
-          player={reversePlayer}
-          style={[StyleSheet.absoluteFill, direction === "reverse" ? null : styles.hidden]}
-          contentFit="cover"
-          nativeControls={false}
-        />
-      </Animated.View>
+      {direction && (
+        <Animated.View
+          style={[StyleSheet.absoluteFill, { opacity: overlayOpacity, transform: [{ scale: zoom }] }]}
+          pointerEvents="auto"
+        >
+          <VideoView
+            player={direction === "forward" ? forwardPlayer : reversePlayer}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            nativeControls={false}
+          />
+        </Animated.View>
+      )}
     </CarTransitionContext.Provider>
   );
 }
-
-const styles = StyleSheet.create({
-  hidden: { opacity: 0 },
-});
