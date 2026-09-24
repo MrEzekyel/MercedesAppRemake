@@ -40,6 +40,7 @@ def parse_update(update: Any) -> dict[str, Any]:
 _VEHICLE_STATUS_ALIASES = {
     "distance_start": "distanceStart",
     "average_speed_start": "averageSpeedStart",
+    "driven_time_start": "drivenTimeStart",
     "position_heading": "positionHeading",
     "position_lat": "positionLat",
     "position_long": "positionLong",

@@ -245,6 +245,23 @@ class Database:
             trip_id, ended_at, odometer, distance_km, fuel_used_l, avg_speed_kmh,
         )
 
+    async def update_trip_metrics(
+        self, trip_id: UUID, odometer_end: int | None, distance_km: float | None,
+        fuel_used_l: float | None, avg_speed_kmh: float | None,
+    ) -> None:
+        """Aggiorna i numeri di un viaggio gia' chiuso con dati arrivati dopo."""
+        await self.pool.execute(
+            """
+            UPDATE trip SET
+                odometer_end  = COALESCE($2, odometer_end),
+                distance_km   = COALESCE($3, distance_km),
+                fuel_used_l   = COALESCE($4, fuel_used_l),
+                avg_speed_kmh = COALESCE($5, avg_speed_kmh)
+            WHERE id = $1
+            """,
+            trip_id, odometer_end, distance_km, fuel_used_l, avg_speed_kmh,
+        )
+
     async def list_trips(self, vin: str | None, limit: int, offset: int) -> list[dict[str, Any]]:
         rows = await self.pool.fetch(
             """

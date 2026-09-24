@@ -11,13 +11,18 @@ applicato; l'indirizzo si passa con TEST_DATABASE_URL.
 
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime, timedelta, timezone
 
 import pytest
 import pytest_asyncio
+from google.protobuf.json_format import MessageToDict
 
+from app import mbapi  # noqa: F401  installa la compatibilita' Home Assistant
 from app.db import Database
+from app.mbapi.proto import vehicle_events_pb2
+from app.replay_trips import replay
 from app.trips import TripRecorder
 
 DSN = os.environ.get("TEST_DATABASE_URL")
@@ -167,3 +172,114 @@ async def test_stationary_points_are_not_recorded(db):
         "SELECT count(*) FROM trip_point WHERE trip_id = $1", trip["id"]
     )
     assert points == 1
+
+
+# --- Contatori "da partenza" che non si azzerano a ogni viaggio -------------
+#
+# L'auto azzera distanceStart / liquidconsumptionstart solo dopo circa 4 ore
+# di sosta: due viaggi ravvicinati li accumulano. E i messaggi portano solo i
+# campi cambiati, quindi consumo e distanza possono arrivare in messaggi
+# diversi, anche dopo lo spegnimento.
+
+
+async def _trip(recorder, start, end_msg, *, open_msg=None, minutes=15):
+    await recorder.handle(VIN, open_msg or {"ignitionstate": "4"}, start)
+    await recorder.handle(VIN, end_msg, start + timedelta(minutes=minutes))
+
+
+@pytest.mark.asyncio
+async def test_second_trip_counts_only_its_own_distance(db):
+    """Il caso reale: 6,9 km, sosta di un'ora e mezza, altri 11,4 km. A fine
+    secondo viaggio l'auto riporta 18,3 km da partenza (la somma)."""
+    recorder = TripRecorder(db)
+    await _trip(
+        recorder, START,
+        {"ignitionstate": "0", "distanceStart": 6.9, "liquidconsumptionstart": 7.0, "odo": 118257},
+        open_msg={"ignitionstate": "4", "distanceStart": 0.0, "odo": 118250},
+    )
+    await _trip(
+        recorder, START + timedelta(minutes=90),
+        {"ignitionstate": "0", "distanceStart": 18.3, "liquidconsumptionstart": 7.5, "odo": 118268},
+    )
+
+    first, second = sorted(await db.list_trips(VIN, 10, 0), key=lambda t: t["started_at"])
+    assert float(first["distance_effective_km"]) == pytest.approx(6.9)
+    assert float(second["distance_effective_km"]) == pytest.approx(11.4)
+    # 18,3 km a 7,5 = 1,3725 l in tutto, di cui 0,483 l nel primo viaggio.
+    assert float(second["fuel_used_l"]) == pytest.approx(0.89, abs=0.01)
+    assert second["odometer_start"] == 118257
+
+
+@pytest.mark.asyncio
+async def test_counter_reset_between_trips_is_detected(db):
+    """Dopo una lunga sosta l'auto riparte da zero: sottrarre il valore del
+    viaggio precedente darebbe 11,4 - 6,9 = 4,5 km. Il contachilometri
+    (+11 km) dice quale lettura e' giusta."""
+    recorder = TripRecorder(db)
+    await _trip(
+        recorder, START,
+        {"ignitionstate": "0", "distanceStart": 6.9, "odo": 41007},
+        open_msg={"ignitionstate": "4", "odo": 41000},
+    )
+    await _trip(
+        recorder, START + timedelta(hours=6),
+        {"ignitionstate": "0", "distanceStart": 11.4, "odo": 41018},
+    )
+
+    latest = (await db.list_trips(VIN, 1, 0))[0]
+    assert float(latest["distance_effective_km"]) == pytest.approx(11.4)
+
+
+@pytest.mark.asyncio
+async def test_consumption_arriving_after_ignition_off_is_used(db):
+    """Il messaggio di spegnimento porta la distanza ma non il consumo, che
+    arriva pochi secondi dopo in un messaggio separato."""
+    recorder = TripRecorder(db)
+    await _trip(
+        recorder, START,
+        {"ignitionstate": "0", "distanceStart": 12.0, "odo": 41012},
+        open_msg={"ignitionstate": "4", "distanceStart": 0.0, "odo": 41000},
+    )
+    await recorder.handle(
+        VIN, {"liquidconsumptionstart": 6.0, "drivenTimeStart": 20},
+        START + timedelta(minutes=15, seconds=5),
+    )
+
+    trip = (await db.list_trips(VIN, 1, 0))[0]
+    assert float(trip["fuel_used_l"]) == pytest.approx(0.72, abs=0.01)
+    assert float(trip["avg_speed_kmh"]) == pytest.approx(36.0, abs=0.1)
+
+
+@pytest.mark.asyncio
+async def test_replay_rebuilds_trips_from_raw_events(db):
+    """I viaggi registrati con la logica vecchia si ricalcolano dai messaggi
+    salvati: qui un viaggio con consumo arrivato dopo lo spegnimento, nel
+    formato VehicleStatusUpdate che l'auto usa oggi."""
+    def status(**fields):
+        update = vehicle_events_pb2.VehicleStatusUpdate()
+        for name, value in fields.items():
+            getattr(update, name).value = value
+        return MessageToDict(update)
+
+    messages = [
+        (START, status(ignitionstate=4, distance_start=0.0, odo=41000)),
+        (START + timedelta(minutes=20), status(ignitionstate=0, distance_start=12.0, odo=41012)),
+        (START + timedelta(minutes=20, seconds=4), status(liquidconsumptionstart=6.0, driven_time_start=20)),
+    ]
+    for ts, payload in messages:
+        await db.pool.execute(
+            "INSERT INTO raw_event (vin, received_at, event_type, payload) VALUES ($1, $2, 'vepUpdate', $3)",
+            VIN, ts, json.dumps(payload),
+        )
+    # Un viaggio sbagliato gia' registrato, che il replay deve sostituire.
+    await db.open_trip(VIN, START, None)
+
+    try:
+        await replay(db, START)
+        trips = await db.list_trips(VIN, 10, 0)
+        assert len(trips) == 1
+        assert float(trips[0]["distance_effective_km"]) == pytest.approx(12.0)
+        assert float(trips[0]["fuel_used_l"]) == pytest.approx(0.72, abs=0.01)
+        assert float(trips[0]["avg_speed_kmh"]) == pytest.approx(36.0, abs=0.1)
+    finally:
+        await db.pool.execute("DELETE FROM raw_event WHERE vin = $1", VIN)
