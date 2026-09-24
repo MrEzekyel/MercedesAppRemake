@@ -26,8 +26,8 @@ export type Scene = "home" | "detail" | "trips" | "info";
 interface CarTransitionApi {
   /**
    * Transizione video da una schermata all'altra; `onDone` naviga ed e'
-   * chiamato subito (la schermata di arrivo si monta sotto il video). Senza
-   * una clip per quella coppia naviga e basta.
+   * chiamato appena il video parte (la schermata di arrivo si monta sotto
+   * il video). Senza una clip per quella coppia naviga e basta.
    */
   play: (from: Scene, to: Scene, onDone: () => void) => void;
   /**
@@ -123,6 +123,9 @@ const CLIP_EASING = Easing.inOut(Easing.sin);
 // oltre un secondo in piu'.
 const END_FALLBACK_EXTRA_MS = 1750;
 
+// Se la vista video non segnala il primo fotogramma, si parte comunque.
+const READY_FALLBACK_MS = 400;
+
 // Dissolvenza della UI DOPO il taglio — mai del video, che non sfuma.
 const FADE_MS = 220;
 
@@ -139,6 +142,16 @@ const ACTIVE_TAB: Record<Scene, TabName> = {
   trips: "trips",
   info: "vehicle-info",
 };
+
+/**
+ * Fermo sul primo fotogramma. Non replay(): su iOS riavvolge E fa partire
+ * il video (VideoModule.swift, player.ref.play()), che cosi' correva mentre
+ * la vista non era ancora pronta e compariva gia' a meta' movimento.
+ */
+function rewind(player: VideoPlayer) {
+  player.pause();
+  player.currentTime = 0;
+}
 
 function usePlayers(): Record<string, VideoPlayer> {
   const setup = (p: VideoPlayer) => {
@@ -163,6 +176,9 @@ export function CarTransitionProvider({ children }: { children: ReactNode }) {
   const cleanup = useRef<(() => void) | null>(null);
   const scale = useRef(new Animated.Value(1.09)).current;
   const contentOpacity = useRef(new Animated.Value(1)).current;
+  const overlayOpacity = useRef(new Animated.Value(0)).current;
+  // Avvio della transizione in attesa del primo fotogramma della vista video.
+  const startRef = useRef<(() => void) | null>(null);
   const players = usePlayers();
   // In un ref: i player sono sempre gli stessi, ma l'oggetto che li raccoglie
   // e' nuovo a ogni render e renderebbe `play` instabile.
@@ -180,26 +196,20 @@ export function CarTransitionProvider({ children }: { children: ReactNode }) {
       cleanup.current?.();
 
       contentOpacity.setValue(0);
+      // Il video resta invisibile finche' la sua vista non ha il primo
+      // fotogramma pronto: nel frattempo si vede la schermata di partenza,
+      // ferma e identica a quel fotogramma. Mostrarlo subito lasciava un
+      // attimo di fondo scuro e poi il video gia' avanzato (lo scatto in
+      // partenza), perche' la vista nasce solo ora e ci mette un po'.
+      overlayOpacity.setValue(0);
 
       const zooms = clip.path.map((scene) => ZOOM[scene]);
       scale.setValue(zooms[0]);
-      // Lo zoom parte subito: il player arriva in fondo ~20ms dopo la durata
-      // della clip (misurato), l'evento playingChange invece arriva ~230ms
-      // dopo il tocco — aspettarlo lascerebbe lo zoom indietro.
-      Animated.sequence(
-        clip.durations.map((duration, i) =>
-          Animated.timing(scale, {
-            toValue: zooms[i + 1],
-            duration,
-            easing: CLIP_EASING,
-            useNativeDriver: true,
-          })
-        )
-      ).start();
+      const lastZoom = zooms[zooms.length - 1];
+      const total = clip.durations.reduce((a, b) => a + b, 0);
 
       // Il video sparisce di colpo quando e' davvero arrivato all'ultimo
       // fotogramma (identico alla foto sotto), non dopo un tempo fisso.
-      const lastZoom = zooms[zooms.length - 1];
       let finished = false;
       const finish = () => {
         if (finished) return;
@@ -209,6 +219,9 @@ export function CarTransitionProvider({ children }: { children: ReactNode }) {
         scale.stopAnimation();
         scale.setValue(lastZoom);
         setActive(null);
+        // Riavvolto gia' ora, a vista smontata: la prossima volta il primo
+        // fotogramma pronto e' davvero il primo, non l'ultimo di adesso.
+        rewind(player);
         Animated.timing(contentOpacity, {
           toValue: 1,
           duration: FADE_MS,
@@ -217,45 +230,73 @@ export function CarTransitionProvider({ children }: { children: ReactNode }) {
         }).start();
       };
 
-      const total = clip.durations.reduce((a, b) => a + b, 0);
-      const endSub = player.addListener("playToEnd", finish);
-      const endFallback = setTimeout(finish, total + END_FALLBACK_EXTRA_MS);
+      let endSub: { remove: () => void } | null = null;
+      let endFallback: ReturnType<typeof setTimeout> | null = null;
+      let started = false;
+      let readyFallback: ReturnType<typeof setTimeout> | undefined;
+      const start = () => {
+        if (started || finished) return;
+        started = true;
+        startRef.current = null;
+        clearTimeout(readyFallback);
+        overlayOpacity.setValue(1);
+        player.play();
+        // Zoom e video partono insieme, nello stesso istante.
+        Animated.sequence(
+          clip.durations.map((duration, i) =>
+            Animated.timing(scale, {
+              toValue: zooms[i + 1],
+              duration,
+              easing: CLIP_EASING,
+              useNativeDriver: true,
+            })
+          )
+        ).start();
+        endSub = player.addListener("playToEnd", finish);
+        endFallback = setTimeout(finish, total + END_FALLBACK_EXTRA_MS);
+        // Si naviga solo ora, col video gia' a coprire tutto: la schermata
+        // di arrivo ha l'intera clip per montarsi sotto.
+        onDone();
+      };
+      startRef.current = start;
+      readyFallback = setTimeout(start, READY_FALLBACK_MS);
       cleanup.current = () => {
-        endSub.remove();
-        clearTimeout(endFallback);
+        startRef.current = null;
+        clearTimeout(readyFallback);
+        endSub?.remove();
+        if (endFallback) clearTimeout(endFallback);
       };
 
-      // replay() riavvolge e basta ("Seeks the playback to the beginning"
-      // nei tipi di expo-video): NON fa ripartire la riproduzione.
-      player.replay();
-      player.play();
+      // Fermo sul primo fotogramma fino a `start`.
+      rewind(player);
       setActive({ key, to });
-
-      // Si naviga SUBITO: il video copre la scena per tutta la clip, e la
-      // schermata di arrivo ha tutto quel tempo per montarsi sotto.
-      onDone();
     },
-    [scale, contentOpacity]
+    [scale, contentOpacity, overlayOpacity]
   );
 
   return (
     <CarTransitionContext.Provider value={{ play, vehicleState, reportVehicleState, contentOpacity }}>
       {children}
       {active && (
-        <>
+        // Trasparente (ma gia' a bloccare i tocchi) finche' il video non ha
+        // il primo fotogramma pronto, poi visibile di colpo: vedi `start`.
+        <Animated.View style={[StyleSheet.absoluteFill, { opacity: overlayOpacity }]}>
           {/* Fondo scuro sotto il video: blocca i tocchi durante la
               transizione e non lascia mai intravedere la schermata sotto. */}
           <View style={[StyleSheet.absoluteFill, styles.backdrop]} pointerEvents="auto" />
-          {/* VideoView montata solo durante una transizione, smontata a riposo. */}
+          {/* VideoView montata solo durante una transizione, smontata a riposo;
+              `key` la ricrea a ogni clip, cosi' onFirstFrameRender scatta sempre. */}
           <Animated.View
             style={[StyleSheet.absoluteFill, { transform: [{ scale }] }]}
             pointerEvents="none"
           >
             <VideoView
+              key={active.key}
               player={players[active.key]}
               style={StyleSheet.absoluteFill}
               contentFit="cover"
               nativeControls={false}
+              onFirstFrameRender={() => startRef.current?.()}
             />
           </Animated.View>
           {/* Header, saluto e tab bar sono identici in tutte le schermate:
@@ -266,7 +307,7 @@ export function CarTransitionProvider({ children }: { children: ReactNode }) {
             <VehicleGreeting state={vehicleState} />
             <AppTabBar active={ACTIVE_TAB[active.to]} />
           </View>
-        </>
+        </Animated.View>
       )}
     </CarTransitionContext.Provider>
   );
