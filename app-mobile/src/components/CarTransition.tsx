@@ -126,6 +126,10 @@ const END_FALLBACK_EXTRA_MS = 1750;
 // Se la vista video non segnala il primo fotogramma, si parte comunque.
 const READY_FALLBACK_MS = 400;
 
+// Attesa prima di riavvolgere il video finito: la sua vista deve essere
+// gia' smontata, o il riavvolgimento si vedrebbe.
+const REWIND_DELAY_MS = 300;
+
 // Dissolvenza della UI DOPO il taglio — mai del video, che non sfuma.
 const FADE_MS = 220;
 
@@ -179,6 +183,9 @@ export function CarTransitionProvider({ children }: { children: ReactNode }) {
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   // Avvio della transizione in attesa del primo fotogramma della vista video.
   const startRef = useRef<(() => void) | null>(null);
+  // Cresce a ogni transizione: un riavvolgimento rimandato non tocca un
+  // player che nel frattempo e' ripartito.
+  const generation = useRef(0);
   const players = usePlayers();
   // In un ref: i player sono sempre gli stessi, ma l'oggetto che li raccoglie
   // e' nuovo a ogni render e renderebbe `play` instabile.
@@ -194,6 +201,7 @@ export function CarTransitionProvider({ children }: { children: ReactNode }) {
       }
       const player = playersRef.current[key];
       cleanup.current?.();
+      generation.current += 1;
 
       contentOpacity.setValue(0);
       // Il video resta invisibile finche' la sua vista non ha il primo
@@ -219,9 +227,14 @@ export function CarTransitionProvider({ children }: { children: ReactNode }) {
         scale.stopAnimation();
         scale.setValue(lastZoom);
         setActive(null);
-        // Riavvolto gia' ora, a vista smontata: la prossima volta il primo
-        // fotogramma pronto e' davvero il primo, non l'ultimo di adesso.
-        rewind(player);
+        // Riavvolto a vista gia' smontata, cosi' la prossima volta il primo
+        // fotogramma pronto e' davvero il primo. Non subito: lo smontaggio
+        // arriva un render dopo, e nel frattempo il video riavvolto mostrava
+        // per un istante la schermata di partenza.
+        const gen = generation.current;
+        setTimeout(() => {
+          if (generation.current === gen) rewind(player);
+        }, REWIND_DELAY_MS);
         Animated.timing(contentOpacity, {
           toValue: 1,
           duration: FADE_MS,
