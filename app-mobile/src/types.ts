@@ -47,11 +47,23 @@ export interface TripSummary {
   start_lon: number | null;
   end_lat: number | null;
   end_lon: number | null;
-  /** Tracciato semplificato per l'anteprima: [longitudine, latitudine]. */
+  fuel_level_start_pct: number | null;
+  fuel_level_end_pct: number | null;
+  range_start_km: number | null;
+  range_end_km: number | null;
+  /** Indirizzi da reverse geocoding, salvati dall'app la prima volta. */
+  start_address: string | null;
+  end_address: string | null;
+  tag: string | null;
+  note: string | null;
+  /** Luogo salvato che contiene la partenza/l'arrivo (calcolato dal backend). */
+  start_place_id: string | null;
+  end_place_id: string | null;
+  /** Tracciato semplificato per l'anteprima: [longitudine, latitudine]. Vuoto se chiesto senza. */
   route: [number, number][];
 }
 
-export interface TripDetail extends Omit<TripSummary, "start_lat" | "start_lon" | "end_lat" | "end_lon"> {
+export interface TripDetail extends TripSummary {
   distance_km: number | null;
   distance_gps_km: number | null;
   /** Coppie [longitudine, latitudine], come da GeoJSON. */
@@ -75,4 +87,18 @@ export interface Refuel {
   full_tank: boolean;
   notes: string | null;
   confirmed_at: string | null;
+}
+
+export type PlaceIcon = "home" | "work" | "gym" | "shop" | "heart" | "school" | "star" | "pin";
+
+export interface Place {
+  id: string;
+  name: string;
+  icon: PlaceIcon;
+  color: string;
+  latitude: number;
+  longitude: number;
+  /** Tolleranza: si parcheggia spesso un po' piu' in la' della destinazione. */
+  radius_m: number;
+  created_at: string;
 }

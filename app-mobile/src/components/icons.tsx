@@ -247,3 +247,51 @@ export const ChevronIcon = icon(({ color, strokeWidth }) => (
   <Path d="m9 5.5 6.5 6.5L9 18.5" stroke={color} strokeWidth={strokeWidth} {...S} />
 ));
 
+
+export const ChevronLeftIcon = icon(({ color, strokeWidth }) => (
+  <Path d="M15 5.5 8.5 12l6.5 6.5" stroke={color} strokeWidth={strokeWidth} {...S} />
+));
+
+export const PinIcon = icon(({ color, strokeWidth }) => (
+  <>
+    <Path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z" stroke={color} strokeWidth={strokeWidth} {...S} />
+    <Circle cx="12" cy="10" r="2.3" stroke={color} strokeWidth={strokeWidth} />
+  </>
+));
+
+export const TrophyIcon = icon(({ color, strokeWidth }) => (
+  <>
+    <Path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z" stroke={color} strokeWidth={strokeWidth} {...S} />
+    <Path d="M7 6H4.5v1.5A3.5 3.5 0 0 0 7.6 11M17 6h2.5v1.5a3.5 3.5 0 0 1-3.1 3.5" stroke={color} strokeWidth={strokeWidth} {...S} />
+  </>
+));
+
+export const CompareIcon = icon(({ color, strokeWidth }) => (
+  <Path d="M7 4v16M17 4v16M3 9l4-5 4 5M13 15l4 5 4-5" stroke={color} strokeWidth={strokeWidth} {...S} />
+));
+
+export const BulbIcon = icon(({ color, strokeWidth }) => (
+  <Path
+    d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1 2V16h5.2v-.2c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"
+    stroke={color}
+    strokeWidth={strokeWidth}
+    {...S}
+  />
+));
+
+export const PlusIcon = icon(({ color, strokeWidth }) => (
+  <Path d="M12 5v14M5 12h14" stroke={color} strokeWidth={strokeWidth} {...S} />
+));
+
+export const CloseIcon = icon(({ color, strokeWidth }) => (
+  <Path d="M6 6l12 12M18 6 6 18" stroke={color} strokeWidth={strokeWidth} {...S} />
+));
+
+/** Un solo tracciato 24×24 a tratto: per le icone scelte dall'utente (luoghi). */
+export function PathIcon({ d, size = 22, color = "#ffffff", strokeWidth = 1.6 }: IconProps & { d: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d={d} stroke={color} strokeWidth={strokeWidth} {...S} />
+    </Svg>
+  );
+}

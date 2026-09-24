@@ -1,287 +1,326 @@
-import { useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { router, useLocalSearchParams } from "expo-router";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Dimensions, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import MapView, { Marker, Polyline } from "react-native-maps";
 import { api, ApiError } from "../../src/api";
-import { formatEur, tripCost } from "../../src/fuel";
+import { SubPage } from "../../src/components/trips/SubPage";
+import { Dot, Eyebrow, GOOD, HAIRLINE, HAIRLINE_SOFT, StatGrid, WARN } from "../../src/components/trips/ui";
 import { colors, radius, spacing } from "../../src/theme";
-import type { Refuel, TripDetail, VehicleState } from "../../src/types";
-import { useFuelPrice } from "../../src/useFuelPrice";
+import { useAddresses, useBasics, useTrips } from "../../src/trips/data";
+import * as f from "../../src/trips/format";
+import { endpoint } from "../../src/trips/places";
+import { totals } from "../../src/trips/stats";
+import type { TripDetail } from "../../src/types";
+
+const { width: SCREEN_W } = Dimensions.get("window");
+const MAP_H = 560;
+const TAGS = ["Personale", "Lavoro", "Commissione"];
 
 /**
- * Un viaggio per intero: dove sei passato, quanto e' durato, quanto ha
- * bevuto e quanto e' costato. La mappa usa il provider di sistema (Apple
- * Maps su iOS): Google Maps richiederebbe una chiave API e una build
- * nativa, che con Expo Go non e' possibile.
+ * Un viaggio per intero. La mappa sta dietro header e saluto, a tutta
+ * larghezza: il percorso e' disegnato dai punti GPS raccolti durante la
+ * marcia (pochi, quindi la linea e' approssimata). Sotto, i numeri, il
+ * confronto con la tua media, l'auto prima e dopo, etichetta e nota.
  */
 export default function TripDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [trip, setTrip] = useState<TripDetail | null>(null);
-  const [refuels, setRefuels] = useState<Refuel[]>([]);
-  const [state, setState] = useState<VehicleState | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const price = useFuelPrice(state, refuels);
+  const [note, setNote] = useState("");
+  const basics = useBasics();
+  const price = basics.price.value;
+
+  // Media degli ultimi 90 giorni: il metro con cui giudicare questo viaggio.
+  const recent = useMemo(() => {
+    const end = new Date();
+    return { start: new Date(end.getTime() - 90 * 86400000), end };
+  }, []);
+  const { trips: last90 } = useTrips(recent);
+  const avg = totals(last90, price).lPer100;
 
   useEffect(() => {
     if (!id) return;
-    Promise.all([api.getTrip(id), api.listRefuels({ limit: 200 }), api.getState()])
-      .then(([t, refuelRows, states]: [TripDetail, Refuel[], VehicleState[]]) => {
+    api
+      .getTrip(id)
+      .then((t) => {
         setTrip(t);
-        setRefuels(refuelRows);
-        setState(states[0] ?? null);
+        setNote(t.note ?? "");
         setError(null);
       })
       .catch((e) => setError(e instanceof ApiError ? e.message : "Backend non raggiungibile"));
   }, [id]);
 
-  if (error) {
-    return (
-      <View style={styles.centered}>
-        <Text style={styles.errorText}>{error}</Text>
-      </View>
-    );
-  }
+  const one = useMemo(() => (trip ? [trip] : []), [trip]);
+  const addresses = useAddresses(one, basics.placeMap);
+
+  const update = async (body: Parameters<typeof api.updateTrip>[1]) => {
+    if (!trip) return;
+    setTrip({ ...trip, ...body });
+    try {
+      setTrip(await api.updateTrip(trip.id, body));
+    } catch {
+      setError("Modifica non salvata");
+    }
+  };
 
   if (!trip) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator color={colors.accent} />
-      </View>
+      <SubPage title="Viaggio">
+        {error ? <Text style={styles.error}>{error}</Text> : <ActivityIndicator color={colors.accent} style={styles.loading} />}
+      </SubPage>
     );
   }
 
-  const coords = trip.route.map(([longitude, latitude]) => ({ latitude, longitude }));
-  const cost = tripCost(trip, price.value);
-  const perKm = cost != null && trip.distance_effective_km ? cost / trip.distance_effective_km : null;
+  const from = endpoint(trip, "start", basics.placeMap, addresses);
+  const to = endpoint(trip, "end", basics.placeMap, addresses);
+  const cost = price != null && trip.fuel_used_l != null ? trip.fuel_used_l * price : null;
+  const vsAvg = trip.l_per_100km != null && avg != null ? trip.l_per_100km / avg - 1 : null;
+  const tone = vsAvg == null ? null : vsAvg > 0.05 ? "warn" : vsAvg < -0.05 ? "good" : null;
+  const start = new Date(trip.started_at);
+  const dateLine = `${f.weekday(start)} ${f.shortDate(start)} · ${f.time(trip.started_at)}${trip.ended_at ? ` – ${f.time(trip.ended_at)}` : ""}`;
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      {coords.length >= 2 ? (
-        <View style={styles.mapFrame}>
-          <MapView
-            style={styles.map}
-            initialRegion={regionFromCoords(coords)}
-            scrollEnabled={false}
-            zoomEnabled={false}
-            userInterfaceStyle="dark"
+    <SubPage
+      title=""
+      backdrop={<RouteBackdrop trip={trip} fromColor={from.color} toColor={to.color} />}
+    >
+      <View style={styles.mapSpace} pointerEvents="none" />
+
+      <View style={styles.head}>
+        <Eyebrow>{dateLine.toUpperCase()}</Eyebrow>
+        <View style={styles.titleRow}>
+          {from.color && <Dot color={from.color} size={8} />}
+          <Text style={styles.title}>{from.name}</Text>
+          <Text style={styles.arrow}>→</Text>
+          {to.color && <Dot color={to.color} size={8} />}
+          <Text style={styles.title}>{to.name}</Text>
+        </View>
+        {!to.place && trip.end_lat != null && trip.end_lon != null && (
+          <Pressable
+            onPress={() =>
+              router.push({
+                pathname: "/place/[id]",
+                params: { id: "new", lat: String(trip.end_lat), lon: String(trip.end_lon), name: "" },
+              })
+            }
+            hitSlop={6}
           >
-            <Polyline coordinates={coords} strokeColor={colors.accent} strokeWidth={4} />
-            <Marker coordinate={coords[0]} title="Partenza" pinColor="#ffffff" />
-            <Marker coordinate={coords[coords.length - 1]} title="Arrivo" pinColor={colors.accent} />
-          </MapView>
-        </View>
-      ) : (
-        <View style={styles.noMap}>
-          <Text style={styles.noMapText}>
-            Nessun tracciato GPS per questo viaggio: l&apos;auto non ha inviato posizioni mentre era
-            in movimento
+            <Text style={styles.link}>Salva la destinazione come luogo</Text>
+          </Pressable>
+        )}
+      </View>
+
+      <StatGrid
+        columns={3}
+        cells={[
+          { label: "DISTANZA", value: f.km(trip.distance_effective_km), unit: "km" },
+          { label: "DURATA", value: f.duration(trip.duration_s) },
+          { label: "MEDIA", value: f.num(trip.avg_speed_kmh, 0), unit: "km/h" },
+          { label: "CARBURANTE", value: f.num(trip.fuel_used_l, 2), unit: "L" },
+          { label: "COSTO", value: cost != null ? f.num(cost, 2) : "—", unit: cost != null ? "€" : undefined },
+          { label: "L/100 KM", value: f.num(trip.l_per_100km) },
+        ]}
+      />
+
+      {vsAvg != null && avg != null && trip.l_per_100km != null && (
+        <View style={[styles.compare, tone === "warn" && styles.compareWarn, tone === "good" && styles.compareGood]}>
+          <View style={styles.row}>
+            <Text style={styles.body}>Consumo rispetto alla tua media</Text>
+            <Text style={[styles.strong, { color: tone === "warn" ? WARN : tone === "good" ? GOOD : colors.textPrimary }]}>
+              {f.pct(vsAvg)}
+            </Text>
+          </View>
+          <View style={styles.bar}>
+            <View style={[styles.barFill, { width: `${Math.min(100, (avg / 12) * 100)}%`, backgroundColor: "rgba(255,255,255,0.3)" }]} />
+            <View
+              style={[
+                styles.barFill,
+                {
+                  width: `${Math.min(100, (trip.l_per_100km / 12) * 100)}%`,
+                  backgroundColor:
+                    tone === "warn" ? "rgba(224,166,60,0.55)" : tone === "good" ? "rgba(52,199,89,0.55)" : "rgba(79,143,209,0.55)",
+                },
+              ]}
+            />
+            <View style={[styles.tick, { left: `${Math.min(100, (avg / 12) * 100)}%` }]} />
+          </View>
+          <Text style={styles.muted}>
+            Media degli ultimi 3 mesi {f.num(avg)} · questo viaggio {f.num(trip.l_per_100km)}
+            {vsAvg > 0.15 && (trip.distance_effective_km ?? 0) < 10 ? ". Tragitto breve: motore freddo per buona parte." : "."}
           </Text>
         </View>
       )}
 
-      <Text style={styles.date}>{fmtDate(trip.started_at)}</Text>
-      <Text style={styles.time}>{fmtTimeRange(trip)}</Text>
+      <View>
+        <Eyebrow style={styles.eyebrowGap}>L'AUTO, PRIMA E DOPO</Eyebrow>
+        <BeforeAfter label="Contachilometri" a={fmtInt(trip.odometer_start)} b={fmtInt(trip.odometer_end)} />
+        <BeforeAfter
+          label="Serbatoio"
+          a={trip.fuel_level_start_pct != null ? `${Math.round(trip.fuel_level_start_pct)}%` : "—"}
+          b={trip.fuel_level_end_pct != null ? `${Math.round(trip.fuel_level_end_pct)}%` : "—"}
+        />
+        <BeforeAfter
+          label="Autonomia"
+          a={trip.range_start_km != null ? `${trip.range_start_km} km` : "—"}
+          b={trip.range_end_km != null ? `${trip.range_end_km} km` : "—"}
+        />
+      </View>
 
-      {/* Costo in evidenza: e' il dato che non si trova altrove */}
-      <View style={styles.costCard}>
-        <View>
-          <Text style={styles.costValue}>{formatEur(cost)}</Text>
-          <Text style={styles.costLabel}>Costo del viaggio</Text>
+      <View style={styles.editBlock}>
+        <Eyebrow>ETICHETTA</Eyebrow>
+        <View style={styles.tags}>
+          {[...TAGS, ...(trip.tag && !TAGS.includes(trip.tag) ? [trip.tag] : [])].map((t) => {
+            const on = trip.tag === t;
+            return (
+              <Pressable key={t} onPress={() => update({ tag: on ? null : t })} style={[styles.tag, on && styles.tagOn]}>
+                <Text style={[styles.tagText, on && styles.tagTextOn]}>{t}</Text>
+              </Pressable>
+            );
+          })}
         </View>
-        <View style={styles.costSide}>
-          <Text style={styles.costSideValue}>
-            {perKm != null ? `${perKm.toFixed(2).replace(".", ",")} €` : "—"}
-          </Text>
-          <Text style={styles.costLabel}>al km</Text>
-        </View>
+        <Eyebrow style={styles.noteLabel}>NOTE</Eyebrow>
+        <TextInput
+          value={note}
+          onChangeText={setNote}
+          onEndEditing={() => note !== (trip.note ?? "") && update({ note: note.trim() || null })}
+          placeholder="Aggiungi una nota al viaggio"
+          placeholderTextColor="rgba(255,255,255,0.3)"
+          multiline
+          style={styles.note}
+          selectionColor={colors.accent}
+          maxLength={500}
+        />
+        {error && <Text style={styles.error}>{error}</Text>}
       </View>
-
-      {price.value == null && (
-        <Text style={styles.hint}>
-          Imposta il prezzo al litro in Viaggi › Consumi per vedere il costo
-        </Text>
-      )}
-
-      <Text style={styles.sectionLabel}>Percorso</Text>
-      <View style={styles.grid}>
-        <Cell value={fmt(trip.distance_effective_km)} unit="km" label="Distanza" />
-        <Cell value={fmtDuration(trip.duration_s)} unit="" label="Tempo" />
-        <Cell value={fmt(trip.avg_speed_kmh, 0)} unit="km/h" label="Vel. media" />
-      </View>
-
-      <Text style={[styles.sectionLabel, styles.sectionSpaced]}>Carburante</Text>
-      <View style={styles.grid}>
-        <Cell value={fmt(trip.l_per_100km)} unit="l/100" label="Consumo" />
-        <Cell value={fmt(trip.fuel_used_l)} unit="l" label="Usati" />
-        <Cell value={fmt(trip.km_per_l)} unit="km/l" label="Resa" />
-      </View>
-
-      {trip.distance_gps_km != null && trip.distance_km != null && (
-        <>
-          <Text style={[styles.sectionLabel, styles.sectionSpaced]}>Misure grezze</Text>
-          <View style={styles.rawRow}>
-            <Text style={styles.rawLabel}>Contachilometri</Text>
-            <Text style={styles.rawValue}>{fmt(trip.distance_km)} km</Text>
-          </View>
-          <View style={styles.rawRow}>
-            <Text style={styles.rawLabel}>Traccia GPS</Text>
-            <Text style={styles.rawValue}>{fmt(trip.distance_gps_km)} km</Text>
-          </View>
-        </>
-      )}
-    </ScrollView>
+    </SubPage>
   );
 }
 
-function Cell({ value, unit, label }: { value: string; unit: string; label: string }) {
+function BeforeAfter({ label, a, b }: { label: string; a: string; b: string }) {
+  if (a === "—" && b === "—") return null;
   return (
-    <View style={styles.cell}>
-      <Text style={styles.cellValue} numberOfLines={1}>
-        {value}
-        {unit ? <Text style={styles.cellUnit}> {unit}</Text> : null}
-      </Text>
-      <Text style={styles.cellLabel}>{label}</Text>
+    <View style={styles.ba}>
+      <Text style={[styles.muted, styles.flex]}>{label}</Text>
+      <Text style={styles.baValue}>{a}</Text>
+      <Text style={styles.baArrow}>→</Text>
+      <Text style={styles.baValue}>{b}</Text>
     </View>
   );
 }
 
-function regionFromCoords(coords: { latitude: number; longitude: number }[]) {
-  const lats = coords.map((c) => c.latitude);
-  const lons = coords.map((c) => c.longitude);
-  const minLat = Math.min(...lats);
-  const maxLat = Math.max(...lats);
-  const minLon = Math.min(...lons);
-  const maxLon = Math.max(...lons);
-  return {
-    latitude: (minLat + maxLat) / 2,
-    longitude: (minLon + maxLon) / 2,
-    // Margine del 40% attorno al percorso, con un minimo per i viaggi corti.
-    latitudeDelta: Math.max((maxLat - minLat) * 1.4, 0.01),
-    longitudeDelta: Math.max((maxLon - minLon) * 1.4, 0.01),
-  };
-}
+const fmtInt = (v: number | null) => (v == null ? "—" : Math.round(v).toLocaleString("it-IT"));
 
-function fmt(value: number | null, decimals = 1): string {
-  return value === null ? "—" : value.toFixed(decimals).replace(".", ",");
-}
+/** Mappa del percorso dietro header e saluto, sfumata in alto e in basso. */
+/** I punti hanno il colore del luogo, come i pallini del titolo sotto. */
+function RouteBackdrop({ trip, fromColor, toColor }: { trip: TripDetail; fromColor: string | null; toColor: string | null }) {
+  const map = useRef<MapView>(null);
+  const coords = trip.route.map(([longitude, latitude]) => ({ latitude, longitude }));
+  if (coords.length === 0 && trip.start_lat != null && trip.start_lon != null) {
+    coords.push({ latitude: trip.start_lat, longitude: trip.start_lon });
+  }
+  if (coords.length === 0) return null;
+  const fitRoute = () =>
+    map.current?.fitToCoordinates(coords, { edgePadding: { top: 250, bottom: 130, left: 70, right: 70 }, animated: false });
 
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("it-IT", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
-}
-
-function fmtTimeRange(trip: TripDetail): string {
-  const t = (iso: string) =>
-    new Date(iso).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
-  return trip.ended_at ? `${t(trip.started_at)} – ${t(trip.ended_at)}` : `${t(trip.started_at)} · in corso`;
-}
-
-function fmtDuration(seconds: number | null): string {
-  if (seconds === null) return "—";
-  const min = Math.round(seconds / 60);
-  if (min < 60) return `${min} min`;
-  return `${Math.floor(min / 60)}h ${min % 60}`;
+  return (
+    <View style={styles.backdrop} pointerEvents="none">
+      <MapView
+        ref={map}
+        style={StyleSheet.absoluteFill}
+        initialRegion={{ ...coords[0], latitudeDelta: 0.05, longitudeDelta: 0.05 }}
+        onMapReady={fitRoute}
+        userInterfaceStyle="dark"
+        mapType="mutedStandard"
+        showsPointsOfInterests={false}
+        scrollEnabled={false}
+        zoomEnabled={false}
+        rotateEnabled={false}
+        pitchEnabled={false}
+      >
+        {coords.length >= 2 && (
+          <>
+            <Polyline coordinates={coords} strokeColor="rgba(79,143,209,0.25)" strokeWidth={9} lineCap="round" lineJoin="round" />
+            <Polyline coordinates={coords} strokeColor={colors.accent} strokeWidth={3.5} lineCap="round" lineJoin="round" />
+          </>
+        )}
+        <Marker coordinate={coords[0]} anchor={{ x: 0.5, y: 0.5 }}>
+          <View style={[styles.endpoint, { backgroundColor: fromColor ?? colors.accent }]} />
+        </Marker>
+        {coords.length >= 2 && (
+          <Marker coordinate={coords[coords.length - 1]} anchor={{ x: 0.5, y: 0.5 }}>
+            <View style={[styles.endpoint, { backgroundColor: toColor ?? colors.textPrimary }]} />
+          </Marker>
+        )}
+      </MapView>
+      {/* Mappa appena scurita e sfumata: i nomi delle vie non devono
+          competere con header, saluto e titolo del viaggio. */}
+      <View style={styles.dim} />
+      <LinearGradient colors={[colors.background, "rgba(6,9,16,0)"]} locations={[0.62, 1]} style={styles.fadeTop} />
+      <LinearGradient colors={["rgba(6,9,16,0)", colors.background]} style={styles.fadeBottom} />
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.md, paddingBottom: spacing.xl * 2 },
-  centered: {
-    flex: 1,
-    backgroundColor: colors.background,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: spacing.lg,
-  },
-  errorText: { fontSize: 14, color: colors.danger, textAlign: "center" },
+  flex: { flex: 1 },
+  loading: { marginTop: 40 },
+  backdrop: { position: "absolute", top: 0, left: 0, width: SCREEN_W, height: MAP_H },
+  dim: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(6,9,16,0.16)" },
+  fadeTop: { position: "absolute", top: 0, left: 0, right: 0, height: 330 },
+  fadeBottom: { position: "absolute", bottom: 0, left: 0, right: 0, height: 200 },
+  endpoint: { width: 18, height: 18, borderRadius: 9, borderWidth: 3, borderColor: colors.background },
 
-  mapFrame: {
-    height: 240,
-    borderRadius: radius.lg,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-  },
-  map: { flex: 1 },
-  noMap: {
-    height: 120,
-    borderRadius: radius.lg,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: spacing.lg,
-  },
-  noMapText: { fontSize: 12.5, color: colors.textTertiary, textAlign: "center", lineHeight: 18 },
+  mapSpace: { height: 210, marginTop: -26 },
 
-  date: {
-    fontSize: 19,
-    fontWeight: "600",
-    color: colors.textPrimary,
-    textTransform: "capitalize",
-    marginTop: spacing.lg,
-  },
-  time: { fontSize: 13, color: "rgba(255,255,255,0.45)", marginTop: 3 },
+  head: { gap: 4 },
+  titleRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 },
+  title: { fontSize: 26, fontWeight: "600", color: colors.textPrimary, letterSpacing: -0.3 },
+  arrow: { fontSize: 22, color: colors.textTertiary },
+  link: { fontSize: 14, color: colors.accent, marginTop: 2 },
+  body: { fontSize: 14, color: colors.textPrimary },
+  strong: { fontSize: 14, fontWeight: "600" },
+  muted: { fontSize: 12, lineHeight: 17, color: colors.textSecondary },
+  error: { fontSize: 12, color: colors.danger },
+  row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  eyebrowGap: { paddingBottom: 8 },
 
-  costCard: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
-    marginTop: spacing.lg,
+  compare: {
     padding: spacing.md,
-    borderRadius: radius.lg,
-    backgroundColor: colors.accentSoft,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: "rgba(79,143,209,0.35)",
+    borderColor: HAIRLINE,
+    gap: 12,
   },
-  costValue: { fontSize: 30, fontWeight: "600", color: colors.textPrimary, letterSpacing: -0.8 },
-  costSide: { alignItems: "flex-end" },
-  costSideValue: { fontSize: 17, fontWeight: "600", color: colors.accent },
-  costLabel: {
-    fontSize: 9.5,
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-    color: "rgba(255,255,255,0.5)",
-    marginTop: 4,
-  },
-  hint: {
-    fontSize: 11.5,
-    color: "rgba(255,255,255,0.45)",
-    marginTop: spacing.sm,
-    textAlign: "center",
-  },
+  compareWarn: { backgroundColor: "rgba(224,166,60,0.08)", borderColor: "rgba(224,166,60,0.25)" },
+  compareGood: { backgroundColor: "rgba(52,199,89,0.08)", borderColor: "rgba(52,199,89,0.25)" },
+  bar: { height: 8, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.08)" },
+  barFill: { position: "absolute", left: 0, height: 8, borderRadius: 4 },
+  tick: { position: "absolute", top: -4, width: 2, height: 16, marginLeft: -1, backgroundColor: colors.textPrimary },
 
-  sectionLabel: {
-    fontSize: 9.5,
-    letterSpacing: 1.4,
-    textTransform: "uppercase",
-    color: "rgba(255,255,255,0.42)",
-    marginTop: spacing.xl,
-    marginBottom: spacing.sm,
-  },
-  sectionSpaced: {},
+  ba: { flexDirection: "row", alignItems: "center", paddingVertical: 12, borderTopWidth: 1, borderTopColor: HAIRLINE_SOFT },
+  baValue: { width: 84, textAlign: "right", fontSize: 14, color: colors.textPrimary },
+  baArrow: { width: 20, textAlign: "center", fontSize: 14, color: colors.textTertiary },
 
-  grid: { flexDirection: "row", alignItems: "center" },
-  cell: { flex: 1, alignItems: "center", gap: 6 },
-  cellValue: { fontSize: 20, fontWeight: "600", color: colors.textPrimary, letterSpacing: -0.5 },
-  cellUnit: { fontSize: 11, fontWeight: "500", color: colors.textSecondary, letterSpacing: 0 },
-  cellLabel: {
-    fontSize: 9,
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-    color: "rgba(255,255,255,0.4)",
+  editBlock: { gap: 10 },
+  tags: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  tag: { height: 34, paddingHorizontal: 14, borderRadius: radius.pill, borderWidth: 1, borderColor: HAIRLINE, justifyContent: "center" },
+  tagOn: { backgroundColor: colors.textPrimary, borderColor: colors.textPrimary },
+  tagText: { fontSize: 13, color: colors.textPrimary },
+  tagTextOn: { color: colors.background, fontWeight: "600" },
+  noteLabel: { paddingTop: 6 },
+  note: {
+    minHeight: 64,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 12,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: HAIRLINE,
+    backgroundColor: colors.surface,
+    color: colors.textPrimary,
+    fontSize: 15,
+    textAlignVertical: "top",
   },
-
-  rawRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: spacing.sm + 2,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.07)",
-  },
-  rawLabel: { fontSize: 13.5, color: colors.textPrimary },
-  rawValue: { fontSize: 13, fontWeight: "600", color: colors.textSecondary },
 });

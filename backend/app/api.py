@@ -6,11 +6,12 @@ import asyncio
 import logging
 import secrets
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from . import commands, mimit
 from .config import settings
@@ -76,10 +77,16 @@ async def get_state(vin: str | None = None) -> list[dict]:
 @app.get("/api/trips", dependencies=[Depends(require_token)])
 async def list_trips(
     vin: str | None = None,
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    limit: Annotated[int, Query(ge=1, le=2000)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    route: bool = True,
 ) -> list[dict]:
-    return await db.list_trips(vin, limit, offset)
+    """Viaggi dal piu' recente. Con since/until quelli iniziati nel periodo;
+    route=false toglie il tracciato, inutile alle statistiche.
+    """
+    return await db.list_trips(vin, limit, offset, since, until, route)
 
 
 @app.get("/api/trips/{trip_id}", dependencies=[Depends(require_token)])
@@ -88,6 +95,79 @@ async def get_trip(trip_id: UUID) -> dict:
     if trip is None:
         raise HTTPException(404, "Viaggio non trovato")
     return trip
+
+
+class TripUpdate(BaseModel):
+    """Solo i campi inviati cambiano; null cancella."""
+
+    tag: Annotated[str | None, Field(max_length=40)] = None
+    note: Annotated[str | None, Field(max_length=500)] = None
+    start_address: Annotated[str | None, Field(max_length=200)] = None
+    end_address: Annotated[str | None, Field(max_length=200)] = None
+
+
+@app.patch("/api/trips/{trip_id}", dependencies=[Depends(require_token)])
+async def update_trip(trip_id: UUID, body: TripUpdate) -> dict:
+    trip = await db.update_trip(trip_id, body.model_dump(exclude_unset=True))
+    if trip is None:
+        raise HTTPException(404, "Viaggio non trovato")
+    return trip
+
+
+PLACE_ICONS = {"home", "work", "gym", "shop", "heart", "school", "star", "pin"}
+_COLOR = r"^#[0-9A-Fa-f]{6}$"
+
+
+class PlaceCreate(BaseModel):
+    name: Annotated[str, Field(min_length=1, max_length=40)]
+    icon: str = "pin"
+    color: Annotated[str, Field(pattern=_COLOR)] = "#4F8FD1"
+    latitude: Annotated[float, Field(ge=-90, le=90)]
+    longitude: Annotated[float, Field(ge=-180, le=180)]
+    radius_m: Annotated[int, Field(ge=50, le=2000)] = 300
+
+
+class PlaceUpdate(BaseModel):
+    name: Annotated[str | None, Field(min_length=1, max_length=40)] = None
+    icon: str | None = None
+    color: Annotated[str | None, Field(pattern=_COLOR)] = None
+    latitude: Annotated[float | None, Field(ge=-90, le=90)] = None
+    longitude: Annotated[float | None, Field(ge=-180, le=180)] = None
+    radius_m: Annotated[int | None, Field(ge=50, le=2000)] = None
+
+
+@app.get("/api/places", dependencies=[Depends(require_token)])
+async def list_places() -> list[dict]:
+    return await db.list_places()
+
+
+@app.post("/api/places", dependencies=[Depends(require_token)])
+async def create_place(body: PlaceCreate) -> dict:
+    if body.icon not in PLACE_ICONS:
+        raise HTTPException(422, "Icona sconosciuta")
+    return await db.create_place(
+        body.name.strip(), body.icon, body.color, body.latitude, body.longitude, body.radius_m
+    )
+
+
+@app.patch("/api/places/{place_id}", dependencies=[Depends(require_token)])
+async def update_place(place_id: UUID, body: PlaceUpdate) -> dict:
+    fields = {k: v for k, v in body.model_dump(exclude_unset=True).items() if v is not None}
+    if "icon" in fields and fields["icon"] not in PLACE_ICONS:
+        raise HTTPException(422, "Icona sconosciuta")
+    if ("latitude" in fields) != ("longitude" in fields):
+        raise HTTPException(422, "Servono latitudine e longitudine insieme")
+    place = await db.update_place(place_id, fields)
+    if place is None:
+        raise HTTPException(404, "Luogo non trovato")
+    return place
+
+
+@app.delete("/api/places/{place_id}", dependencies=[Depends(require_token)])
+async def delete_place(place_id: UUID) -> dict:
+    if not await db.delete_place(place_id):
+        raise HTTPException(404, "Luogo non trovato")
+    return {"deleted": True}
 
 
 class VehicleSettings(BaseModel):

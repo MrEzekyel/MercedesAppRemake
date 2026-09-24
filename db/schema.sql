@@ -97,6 +97,17 @@ CREATE TABLE trip (
     -- da trip_point. Evita di ricostruire la linea a ogni apertura della mappa.
     route           geography(LineString, 4326),
 
+    -- Livello e autonomia all'accensione e allo spegnimento: il "prima e
+    -- dopo" dell'auto nel dettaglio del viaggio.
+    fuel_level_start_pct numeric(4,1),
+    fuel_level_end_pct   numeric(4,1),
+    range_start_km       integer,
+    range_end_km         integer,
+
+    -- Scelti dall'utente nel dettaglio del viaggio.
+    tag             text,
+    note            text,
+
     created_at      timestamptz NOT NULL DEFAULT now()
 );
 
@@ -117,6 +128,21 @@ SELECT
          THEN COALESCE(t.distance_km, t.distance_gps_km) / t.fuel_used_l
     END                                                      AS km_per_l
 FROM trip t;
+
+-- Luoghi salvati dall'utente (Casa, Lavoro...). Un viaggio parte o arriva
+-- in un luogo se il suo punto cade entro radius_m: si parcheggia spesso un
+-- po' piu' in la' della destinazione. Il legame non e' salvato sul viaggio
+-- ma calcolato in lettura, cosi' un luogo nuovo vale anche per lo storico.
+CREATE TABLE place (
+    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name        text NOT NULL,
+    icon        text NOT NULL DEFAULT 'pin',
+    color       text NOT NULL DEFAULT '#4F8FD1',
+    position    geography(Point, 4326) NOT NULL,
+    radius_m    integer NOT NULL DEFAULT 300 CHECK (radius_m BETWEEN 50 AND 2000),
+    created_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX place_position_idx ON place USING gist (position);
 
 -- ---------------------------------------------------------------------------
 -- Briciole GPS

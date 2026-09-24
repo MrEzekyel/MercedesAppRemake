@@ -14,6 +14,8 @@ import { colors } from "../src/theme";
  * overlay video deve comparire SOPRA qualunque schermata durante il
  * cambio pagina Home <-> dettaglio veicolo.
  */
+const SUBPAGE = { headerShown: false, animation: "fade", animationDuration: 220 } as const;
+
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
@@ -46,8 +48,16 @@ export default function RootLayout() {
             }}
           />
           <Stack.Screen name="refuels" options={{ title: "Rifornimenti" }} />
-          <Stack.Screen name="consumption" options={{ title: "Consumi" }} />
-          <Stack.Screen name="trip/[id]" options={{ title: "Viaggio" }} />
+          {/* Approfondimenti di Viaggi: header, saluto e tab bar sono gli
+              stessi della tab, quindi con la dissolvenza restano fermi e
+              cambia solo il contenuto. Uno scorrimento laterale li
+              trascinerebbe via con la pagina. */}
+          <Stack.Screen name="consumption" options={SUBPAGE} />
+          <Stack.Screen name="habits" options={SUBPAGE} />
+          <Stack.Screen name="records" options={SUBPAGE} />
+          <Stack.Screen name="compare" options={SUBPAGE} />
+          <Stack.Screen name="trip/[id]" options={SUBPAGE} />
+          <Stack.Screen name="place/[id]" options={{ headerShown: false, presentation: "modal" }} />
           <Stack.Screen
             name="refuel/[id]"
             options={{ title: "Conferma rifornimento", presentation: "modal" }}

@@ -35,6 +35,10 @@ def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 # ricordati fra un messaggio e l'altro.
 _COUNTERS = ("distanceStart", "liquidconsumptionstart", "drivenTimeStart", "odo")
 
+# Livello del serbatoio e autonomia: ultimo valore noto, per il "prima e
+# dopo" del viaggio.
+_LEVELS = ("tanklevelpercent", "rangeliquid")
+
 # Dopo lo spegnimento l'auto puo' mandare consumo e tempo di guida in un
 # messaggio successivo: per questo tempo il viaggio appena chiuso si aggiorna.
 _LATE_DATA_WINDOW_S = 600
@@ -56,6 +60,7 @@ class TripRecorder:
         self._db = db
         # Ultimo valore noto di ogni contatore, per veicolo.
         self._counters: dict[str, dict[str, float]] = {}
+        self._levels: dict[str, dict[str, float]] = {}
         # Contatori all'apertura di ciascun viaggio ancora aperto.
         self._baselines: dict[UUID, dict[str, float]] = {}
         self._recent_closed: dict[str, _Closed] = {}
@@ -66,6 +71,11 @@ class TripRecorder:
             value = _as_float(attrs.get(key))
             if value is not None:
                 counters[key] = value
+        levels = self._levels.setdefault(vin, {})
+        for key in _LEVELS:
+            value = _as_float(attrs.get(key))
+            if value is not None:
+                levels[key] = value
 
         ignition = is_ignition_on(attrs)
         if ignition is True:
@@ -79,7 +89,8 @@ class TripRecorder:
 
     async def _ensure_open(self, vin: str, ts: datetime) -> None:
         counters = self._counters[vin]
-        trip_id = await self._db.open_trip(vin, ts, _as_int(counters.get("odo")))
+        fuel, range_km = self._level(vin)
+        trip_id = await self._db.open_trip(vin, ts, _as_int(counters.get("odo")), fuel, range_km)
         if trip_id:
             self._baselines[trip_id] = dict(counters)
             self._recent_closed.pop(vin, None)
@@ -99,8 +110,10 @@ class TripRecorder:
         duration_s = (ts - trip["started_at"]).total_seconds()
         counters = self._counters[vin]
         distance, fuel_used, avg_speed = trip_metrics(baseline, counters, duration_s)
+        fuel, range_km = self._level(vin)
         await self._db.close_trip(
-            trip["id"], ts, _as_int(counters.get("odo")), distance, fuel_used, avg_speed
+            trip["id"], ts, _as_int(counters.get("odo")), distance, fuel_used, avg_speed,
+            fuel, range_km,
         )
         self._recent_closed[vin] = _Closed(trip["id"], ts, duration_s, baseline)
         LOGGER.info("Viaggio chiuso per %s (%s km)", _mask(vin), distance)
@@ -114,9 +127,15 @@ class TripRecorder:
             return
         counters = self._counters[vin]
         distance, fuel_used, avg_speed = trip_metrics(closed.baseline, counters, closed.duration_s)
+        fuel, range_km = self._level(vin)
         await self._db.update_trip_metrics(
-            closed.trip_id, _as_int(counters.get("odo")), distance, fuel_used, avg_speed
+            closed.trip_id, _as_int(counters.get("odo")), distance, fuel_used, avg_speed,
+            fuel, range_km,
         )
+
+    def _level(self, vin: str) -> tuple[float | None, int | None]:
+        levels = self._levels.get(vin, {})
+        return levels.get("tanklevelpercent"), _as_int(levels.get("rangeliquid"))
 
     async def _maybe_record_point(
         self, vin: str, attrs: dict[str, Any], ts: datetime, odometer: int | None

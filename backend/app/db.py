@@ -159,18 +159,23 @@ class Database:
 
     # -- viaggi ------------------------------------------------------------
 
-    async def open_trip(self, vin: str, started_at: datetime, odometer: int | None) -> UUID | None:
+    async def open_trip(
+        self, vin: str, started_at: datetime, odometer: int | None,
+        fuel_level_pct: float | None = None, range_km: int | None = None,
+    ) -> UUID | None:
         """Apre un viaggio. Restituisce None se ce n'e' gia' uno aperto."""
         return await self.pool.fetchval(
             """
-            INSERT INTO trip (vin, started_at, odometer_start)
-            VALUES ($1, $2, $3)
+            INSERT INTO trip (vin, started_at, odometer_start, fuel_level_start_pct, range_start_km)
+            VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT DO NOTHING
             RETURNING id
             """,
             vin,
             started_at,
             odometer,
+            fuel_level_pct,
+            range_km,
         )
 
     async def get_open_trip(self, vin: str) -> dict[str, Any] | None:
@@ -209,6 +214,7 @@ class Database:
     async def close_trip(
         self, trip_id: UUID, ended_at: datetime, odometer: int | None,
         distance_km: float | None, fuel_used_l: float | None, avg_speed_kmh: float | None,
+        fuel_level_pct: float | None = None, range_km: int | None = None,
     ) -> None:
         """Chiude il viaggio e materializza la traccia dai punti raccolti.
 
@@ -235,6 +241,8 @@ class Database:
                 distance_km     = $4,
                 fuel_used_l     = $5,
                 avg_speed_kmh   = $6,
+                fuel_level_end_pct = $7,
+                range_end_km    = $8,
                 route           = line.route,
                 start_position  = COALESCE(trip.start_position, line.first_pos),
                 end_position    = line.last_pos,
@@ -243,11 +251,13 @@ class Database:
             WHERE trip.id = $1
             """,
             trip_id, ended_at, odometer, distance_km, fuel_used_l, avg_speed_kmh,
+            fuel_level_pct, range_km,
         )
 
     async def update_trip_metrics(
         self, trip_id: UUID, odometer_end: int | None, distance_km: float | None,
         fuel_used_l: float | None, avg_speed_kmh: float | None,
+        fuel_level_pct: float | None = None, range_km: int | None = None,
     ) -> None:
         """Aggiorna i numeri di un viaggio gia' chiuso con dati arrivati dopo."""
         await self.pool.execute(
@@ -256,60 +266,100 @@ class Database:
                 odometer_end  = COALESCE($2, odometer_end),
                 distance_km   = COALESCE($3, distance_km),
                 fuel_used_l   = COALESCE($4, fuel_used_l),
-                avg_speed_kmh = COALESCE($5, avg_speed_kmh)
+                avg_speed_kmh = COALESCE($5, avg_speed_kmh),
+                fuel_level_end_pct = COALESCE($6, fuel_level_end_pct),
+                range_end_km  = COALESCE($7, range_end_km)
             WHERE id = $1
             """,
-            trip_id, odometer_end, distance_km, fuel_used_l, avg_speed_kmh,
+            trip_id, odometer_end, distance_km, fuel_used_l, avg_speed_kmh, fuel_level_pct, range_km,
         )
 
-    async def list_trips(self, vin: str | None, limit: int, offset: int) -> list[dict[str, Any]]:
+    async def list_trips(
+        self, vin: str | None, limit: int, offset: int,
+        since: datetime | None = None, until: datetime | None = None, with_route: bool = True,
+    ) -> list[dict[str, Any]]:
+        # Tracciato semplificato: all'elenco serve la forma del percorso per
+        # l'anteprima, non la precisione al metro. ~50 m di tolleranza riduce
+        # di molto i punti trasmessi. Le statistiche non lo chiedono affatto.
+        route = "ST_AsGeoJSON(ST_Simplify(t.route::geometry, 0.0005))" if with_route else "NULL"
         rows = await self.pool.fetch(
-            """
-            SELECT id, vin, started_at, ended_at, duration_s,
-                   distance_effective_km, l_per_100km, km_per_l,
-                   fuel_used_l, avg_speed_kmh, odometer_start, odometer_end,
-                   ST_Y(start_position::geometry) AS start_lat,
-                   ST_X(start_position::geometry) AS start_lon,
-                   ST_Y(end_position::geometry)   AS end_lat,
-                   ST_X(end_position::geometry)   AS end_lon,
-                   -- Tracciato semplificato: all'elenco serve la forma del
-                   -- percorso per l'anteprima, non la precisione al metro.
-                   -- ~50 m di tolleranza riduce di molto i punti trasmessi.
-                   ST_AsGeoJSON(ST_Simplify(route::geometry, 0.0005)) AS route_geojson
-            FROM trip_stats
-            WHERE ($1::text IS NULL OR vin = $1)
-            ORDER BY started_at DESC
+            f"""
+            SELECT {_TRIP_COLUMNS}, {route} AS route_geojson
+            FROM trip_stats t {_TRIP_PLACES}
+            WHERE ($1::text IS NULL OR t.vin = $1)
+              AND ($4::timestamptz IS NULL OR t.started_at >= $4)
+              AND ($5::timestamptz IS NULL OR t.started_at < $5)
+            ORDER BY t.started_at DESC
             LIMIT $2 OFFSET $3
             """,
-            vin, limit, offset,
+            vin, limit, offset, since, until,
         )
-        trips = []
-        for r in rows:
-            trip = _row_to_dict(r)
-            raw = trip.pop("route_geojson", None)
-            trip["route"] = json.loads(raw)["coordinates"] if raw else []
-            trips.append(trip)
-        return trips
+        return [_trip_from_row(r) for r in rows]
 
     async def get_trip(self, trip_id: UUID) -> dict[str, Any] | None:
         row = await self.pool.fetchrow(
-            """
-            SELECT id, vin, started_at, ended_at, duration_s,
-                   distance_effective_km, distance_km, distance_gps_km,
-                   l_per_100km, km_per_l, fuel_used_l, avg_speed_kmh,
-                   odometer_start, odometer_end,
-                   ST_AsGeoJSON(route::geometry) AS route_geojson
-            FROM trip_stats WHERE id = $1
+            f"""
+            SELECT {_TRIP_COLUMNS}, t.distance_km, t.distance_gps_km,
+                   ST_AsGeoJSON(t.route::geometry) AS route_geojson
+            FROM trip_stats t {_TRIP_PLACES}
+            WHERE t.id = $1
             """,
             trip_id,
         )
-        if row is None:
-            return None
-        trip = _row_to_dict(row)
-        raw = trip.pop("route_geojson", None)
-        trip["route"] = json.loads(raw)["coordinates"] if raw else []
-        return trip
+        return _trip_from_row(row) if row else None
 
+    async def update_trip(self, trip_id: UUID, fields: dict[str, Any]) -> dict[str, Any] | None:
+        """Aggiorna i campi scelti dall'utente (etichetta, nota, indirizzi)."""
+        allowed = {"tag", "note", "start_address", "end_address"}
+        fields = {k: v for k, v in fields.items() if k in allowed}
+        if fields:
+            assignments = ", ".join(f"{k} = ${i}" for i, k in enumerate(fields, start=2))
+            result = await self.pool.execute(
+                f"UPDATE trip SET {assignments} WHERE id = $1", trip_id, *fields.values()
+            )
+            if result.endswith(" 0"):
+                return None
+        return await self.get_trip(trip_id)
+
+    # -- luoghi -------------------------------------------------------------
+
+    async def list_places(self) -> list[dict[str, Any]]:
+        rows = await self.pool.fetch(f"SELECT {_PLACE_COLUMNS} FROM place ORDER BY created_at")
+        return [_row_to_dict(r) for r in rows]
+
+    async def create_place(
+        self, name: str, icon: str, color: str, lat: float, lon: float, radius_m: int
+    ) -> dict[str, Any]:
+        row = await self.pool.fetchrow(
+            f"""
+            INSERT INTO place (name, icon, color, position, radius_m)
+            VALUES ($1, $2, $3, ST_SetSRID(ST_MakePoint($5, $4), 4326)::geography, $6)
+            RETURNING {_PLACE_COLUMNS}
+            """,
+            name, icon, color, lat, lon, radius_m,
+        )
+        return _row_to_dict(row)
+
+    async def update_place(self, place_id: UUID, fields: dict[str, Any]) -> dict[str, Any] | None:
+        sets, args = [], [place_id]
+        for key in ("name", "icon", "color", "radius_m"):
+            if key in fields:
+                args.append(fields[key])
+                sets.append(f"{key} = ${len(args)}")
+        if "latitude" in fields and "longitude" in fields:
+            args += [fields["longitude"], fields["latitude"]]
+            sets.append(f"position = ST_SetSRID(ST_MakePoint(${len(args) - 1}, ${len(args)}), 4326)::geography")
+        if not sets:
+            row = await self.pool.fetchrow(f"SELECT {_PLACE_COLUMNS} FROM place WHERE id = $1", place_id)
+        else:
+            row = await self.pool.fetchrow(
+                f"UPDATE place SET {', '.join(sets)} WHERE id = $1 RETURNING {_PLACE_COLUMNS}", *args
+            )
+        return _row_to_dict(row) if row else None
+
+    async def delete_place(self, place_id: UUID) -> bool:
+        result = await self.pool.execute("DELETE FROM place WHERE id = $1", place_id)
+        return result.endswith(" 1")
 
     # -- rifornimenti -------------------------------------------------------
 
@@ -509,6 +559,48 @@ class Database:
             fuel_type, is_self, lon, lat, radius_km * 1000, limit,
         )
         return [_row_to_dict(r) for r in rows]
+
+
+_TRIP_COLUMNS = """
+    t.id, t.vin, t.started_at, t.ended_at, t.duration_s,
+    t.distance_effective_km, t.l_per_100km, t.km_per_l,
+    t.fuel_used_l, t.avg_speed_kmh, t.odometer_start, t.odometer_end,
+    t.fuel_level_start_pct, t.fuel_level_end_pct, t.range_start_km, t.range_end_km,
+    t.start_address, t.end_address, t.tag, t.note,
+    ST_Y(t.start_position::geometry) AS start_lat,
+    ST_X(t.start_position::geometry) AS start_lon,
+    ST_Y(t.end_position::geometry)   AS end_lat,
+    ST_X(t.end_position::geometry)   AS end_lon,
+    sp.id AS start_place_id, ep.id AS end_place_id
+"""
+
+# Il luogo di partenza e di arrivo e' il piu' vicino fra quelli che
+# contengono il punto nel loro raggio. Calcolato in lettura: un luogo salvato
+# oggi riconosce anche i viaggi passati.
+_TRIP_PLACES = """
+    LEFT JOIN LATERAL (
+        SELECT p.id FROM place p
+        WHERE t.start_position IS NOT NULL AND ST_DWithin(p.position, t.start_position, p.radius_m)
+        ORDER BY ST_Distance(p.position, t.start_position) LIMIT 1
+    ) sp ON true
+    LEFT JOIN LATERAL (
+        SELECT p.id FROM place p
+        WHERE t.end_position IS NOT NULL AND ST_DWithin(p.position, t.end_position, p.radius_m)
+        ORDER BY ST_Distance(p.position, t.end_position) LIMIT 1
+    ) ep ON true
+"""
+
+_PLACE_COLUMNS = """
+    id, name, icon, color, radius_m, created_at,
+    ST_Y(position::geometry) AS latitude, ST_X(position::geometry) AS longitude
+"""
+
+
+def _trip_from_row(row: asyncpg.Record) -> dict[str, Any]:
+    trip = _row_to_dict(row)
+    raw = trip.pop("route_geojson", None)
+    trip["route"] = json.loads(raw)["coordinates"] if raw else []
+    return trip
 
 
 def _row_to_dict(row: asyncpg.Record) -> dict[str, Any]:
