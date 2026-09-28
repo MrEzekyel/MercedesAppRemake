@@ -2,6 +2,7 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { CarTransitionProvider } from "../src/components/CarTransition";
+import { LaunchSplash } from "../src/components/LaunchSplash";
 import { colors } from "../src/theme";
 
 /**
@@ -65,6 +66,8 @@ export default function RootLayout() {
           />
         </Stack>
       </CarTransitionProvider>
+      {/* Sopra tutto, anche sopra l'overlay video delle transizioni. */}
+      <LaunchSplash />
     </SafeAreaProvider>
   );
 }

@@ -1,6 +1,6 @@
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { api, ApiError } from "../../src/api";
 import { useCarTransition } from "../../src/components/CarTransition";
 import { FuelIcon, OdometerIcon, RangeIcon } from "../../src/components/icons";
@@ -13,7 +13,6 @@ import { useSwipeNav } from "../../src/useSwipeNav";
 export default function StatoScreen() {
   const [state, setState] = useState<VehicleState | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
   const { play, reportVehicleState } = useCarTransition();
 
   useEffect(() => reportVehicleState(state), [state, reportVehicleState]);
@@ -36,12 +35,6 @@ export default function StatoScreen() {
     }, [load])
   );
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await load();
-    setRefreshing(false);
-  }, [load]);
-
   // Lo scorrimento laterale vale solo dentro la sezione Auto: verso
   // sinistra si apre il dettaglio (e dal dettaglio verso destra si torna
   // qui). Fra le tab si passa solo dalla tab bar.
@@ -50,14 +43,9 @@ export default function StatoScreen() {
   });
 
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.textSecondary} />
-      }
-      {...swipe}
-    >
+    // Niente scorrimento: tutto sta in una schermata, e i dati si
+    // ricaricano da soli (all'apertura e ogni 30 secondi).
+    <View style={styles.screen} {...swipe}>
       <View style={styles.fill}>
         <VehicleHeroCard>
           {error && (
@@ -73,7 +61,7 @@ export default function StatoScreen() {
           </View>
         </VehicleHeroCard>
       </View>
-    </ScrollView>
+    </View>
   );
 }
 
@@ -90,7 +78,6 @@ function fmtKm(value: number | null | undefined): string {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  content: { flexGrow: 1 },
   fill: { flex: 1 },
   errorBanner: {
     backgroundColor: "rgba(193,85,77,0.14)",

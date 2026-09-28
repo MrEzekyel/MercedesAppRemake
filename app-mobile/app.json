@@ -11,13 +11,24 @@
       "expo-router",
       "expo-video",
       "expo-font",
-      "@bacons/apple-targets"
+      "@bacons/apple-targets",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#000000",
+          "image": "./assets/splash-logo.png",
+          "imageWidth": 200
+        }
+      ]
     ],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "it.andreadecaro.mbcompanion",
       "config": {
         "usesNonExemptEncryption": false
+      },
+      "infoPlist": {
+        "CFBundleDisplayName": "Classe A"
       }
     },
     "android": {

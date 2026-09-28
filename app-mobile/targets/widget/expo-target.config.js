@@ -32,7 +32,7 @@ writeConfig();
 module.exports = {
   type: "widget",
   name: "widget",
-  displayName: "MB Companion",
+  displayName: "Classe A",
   deploymentTarget: "18.0",
   frameworks: ["SwiftUI", "WidgetKit", "AppIntents"],
   colors: {
