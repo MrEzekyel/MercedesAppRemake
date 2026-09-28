@@ -101,12 +101,12 @@ function Podium() {
 
 const styles = StyleSheet.create({
   pressed: { opacity: 0.6 },
-  podium: { position: "absolute", top: 150, left: 0, width: SCREEN_W, height: 400, overflow: "hidden" },
+  podium: { position: "absolute", top: 90, left: 0, width: SCREEN_W, height: 390, overflow: "hidden" },
   podiumImage: { position: "absolute", top: -170, left: -SCREEN_W * 0.15, width: SCREEN_W * 1.3, height: SCREEN_W * 1.3 * (2000 / 1116) },
   fadeTop: { position: "absolute", top: 0, left: 0, right: 0, height: 150 },
   fadeBottom: { position: "absolute", bottom: 0, left: 0, right: 0, height: 140 },
 
-  photoSpace: { height: 160 },
+  photoSpace: { height: 190 },
   head: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginBottom: -14 },
   title: { fontSize: 28, fontWeight: "600", color: colors.textPrimary, letterSpacing: -0.3 },
   since: { fontSize: 13, color: colors.textSecondary },

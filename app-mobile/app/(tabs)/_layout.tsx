@@ -1,6 +1,7 @@
 import { Tabs } from "expo-router";
 import { AppTabBar, type TabName } from "../../src/components/AppTabBar";
 import { TAB_SCENE, useCarTransition } from "../../src/components/CarTransition";
+import { tripsScroll } from "../../src/trips/scroll";
 
 /**
  * Tutte e tre le schermate hanno la fotografia a tutto schermo e si
@@ -21,7 +22,12 @@ export default function TabsLayout() {
             active={current}
             onSelect={(name) => {
               if (name === current) return;
-              play(TAB_SCENE[current], TAB_SCENE[name], () => navigation.navigate(name));
+              play(TAB_SCENE[current], TAB_SCENE[name], () => {
+                // Il video copre gia' lo schermo: la tab Viaggi torna in cima
+                // senza che si veda, pronta per il prossimo ingresso.
+                if (current === "trips") tripsScroll.toTop();
+                navigation.navigate(name);
+              });
             }}
           />
         );

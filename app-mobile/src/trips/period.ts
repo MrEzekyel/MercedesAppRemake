@@ -1,12 +1,12 @@
 /**
- * Periodi del resoconto viaggi: settimana, mese, anno, da sempre.
+ * Periodi del resoconto viaggi: giorno, settimana, mese, 3 mesi, anno, da sempre.
  *
  * Un periodo in corso si confronta con lo stesso tratto del precedente
  * (1–24 settembre contro 1–24 agosto), non con il precedente intero:
  * altrimenti a inizio mese ogni numero sembrerebbe crollato.
  */
 
-export type PeriodKind = "week" | "month" | "year" | "all";
+export type PeriodKind = "day" | "week" | "month" | "quarter" | "year" | "all";
 
 export interface Period {
   kind: PeriodKind;
@@ -39,6 +39,7 @@ const MONTHS = [
 ];
 const MONTHS_SHORT = ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"];
 const DAYS_SHORT = ["L", "M", "M", "G", "V", "S", "D"];
+const DAYS = ["domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"];
 
 export const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -64,6 +65,14 @@ export function periodFor(kind: PeriodKind, offset: number, now = new Date(), fi
   let previousName: string | null;
 
   switch (kind) {
+    case "day": {
+      start = addDays(today, offset);
+      fullEnd = addDays(start, 1);
+      const long = `${DAYS[start.getDay()]} ${start.getDate()} ${MONTHS[start.getMonth()]}`;
+      label = offset === 0 ? "Oggi" : offset === -1 ? "Ieri" : capitalize(long);
+      previousName = offset === 0 ? "ieri" : "il giorno prima";
+      break;
+    }
     case "week": {
       start = addDays(startOfWeek(today), 7 * offset);
       fullEnd = addDays(start, 7);
@@ -82,6 +91,15 @@ export function periodFor(kind: PeriodKind, offset: number, now = new Date(), fi
       fullEnd = new Date(start.getFullYear(), start.getMonth() + 1, 1);
       label = `${capitalize(MONTHS[start.getMonth()])} ${start.getFullYear()}`;
       previousName = MONTHS[(start.getMonth() + 11) % 12];
+      break;
+    }
+    case "quarter": {
+      // Tre mesi di calendario che finiscono con quello in corso.
+      start = new Date(today.getFullYear(), today.getMonth() - 2 + 3 * offset, 1);
+      fullEnd = new Date(start.getFullYear(), start.getMonth() + 3, 1);
+      const last = new Date(fullEnd.getFullYear(), fullEnd.getMonth() - 1, 1);
+      label = `${capitalize(MONTHS_SHORT[start.getMonth()])} – ${MONTHS_SHORT[last.getMonth()]} ${last.getFullYear()}`;
+      previousName = "i 3 mesi prima";
       break;
     }
     case "year": {
@@ -103,6 +121,7 @@ export function periodFor(kind: PeriodKind, offset: number, now = new Date(), fi
   const end = now < fullEnd ? now : fullEnd;
   let caption = label.toUpperCase();
   if (kind === "month" && now < fullEnd) caption += ` · 1–${today.getDate()}`;
+  if (kind === "day" && offset >= -1) caption += ` · ${DAYS[start.getDay()]} ${start.getDate()} ${MONTHS[start.getMonth()]}`.toUpperCase();
   if (kind === "all" && firstTripAt) caption = `DA ${MONTHS[firstTripAt.getMonth()].toUpperCase()} ${firstTripAt.getFullYear()}`;
   return { kind, offset, start, end, fullEnd, label, caption, previousName };
 }
@@ -114,11 +133,15 @@ export function periodFor(kind: PeriodKind, offset: number, now = new Date(), fi
 export function previousRange(p: Period): { start: Date; end: Date } | null {
   if (p.kind === "all") return null;
   const prevStart =
-    p.kind === "week"
-      ? addDays(p.start, -7)
-      : p.kind === "month"
-        ? new Date(p.start.getFullYear(), p.start.getMonth() - 1, 1)
-        : new Date(p.start.getFullYear() - 1, 0, 1);
+    p.kind === "day"
+      ? addDays(p.start, -1)
+      : p.kind === "week"
+        ? addDays(p.start, -7)
+        : p.kind === "month"
+          ? new Date(p.start.getFullYear(), p.start.getMonth() - 1, 1)
+          : p.kind === "quarter"
+            ? new Date(p.start.getFullYear(), p.start.getMonth() - 3, 1)
+            : new Date(p.start.getFullYear() - 1, 0, 1);
   const prevFullEnd = p.start;
   if (p.end >= p.fullEnd) return { start: prevStart, end: prevFullEnd };
   const elapsed = p.end.getTime() - p.start.getTime();
@@ -126,9 +149,26 @@ export function previousRange(p: Period): { start: Date; end: Date } | null {
   return { start: prevStart, end };
 }
 
-/** Colonne del grafico: giorni per settimana e mese, mesi per anno e "da sempre". */
+/**
+ * Colonne del grafico: ore per il giorno, giorni per settimana e mese,
+ * settimane per i 3 mesi, mesi per anno e "da sempre".
+ */
 export function bucketsFor(p: Period, now = new Date()): Bucket[] {
   const out: Bucket[] = [];
+  if (p.kind === "day") {
+    for (let h = 0; h < 24; h++) {
+      const start = new Date(p.start.getFullYear(), p.start.getMonth(), p.start.getDate(), h);
+      const end = new Date(p.start.getFullYear(), p.start.getMonth(), p.start.getDate(), h + 1);
+      out.push({ start, end, label: String(h), future: start > now });
+    }
+    return out;
+  }
+  if (p.kind === "quarter") {
+    for (let d = startOfWeek(p.start); d < p.fullEnd; d = addDays(d, 7)) {
+      out.push({ start: d, end: addDays(d, 7), label: `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`, future: d > now });
+    }
+    return out;
+  }
   if (p.kind === "week" || p.kind === "month") {
     for (let d = p.start; d < p.fullEnd; d = addDays(d, 1)) {
       const label = p.kind === "week" ? DAYS_SHORT[(d.getDay() + 6) % 7] : String(d.getDate());
@@ -149,4 +189,50 @@ export function monthName(d: Date): string {
 
 export function monthShort(d: Date): string {
   return MONTHS_SHORT[d.getMonth()];
+}
+
+/** Nome di una colonna per il valore toccato nel grafico: "mar 22 set", "14:00–15:00". */
+export function bucketName(b: Bucket, kind: PeriodKind): string {
+  const d = b.start;
+  switch (kind) {
+    case "day":
+      return `${d.getHours()}:00–${d.getHours() + 1}:00`;
+    case "week":
+    case "month":
+      return `${DAYS[d.getDay()].slice(0, 3)} ${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`;
+    case "quarter":
+      return `settimana dal ${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`;
+    default:
+      return `${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+  }
+}
+
+/** Poche etichette sotto l'asse X, distribuite su tutta la larghezza. */
+export function axisLabelsFor(buckets: Bucket[], kind: PeriodKind): string[] {
+  const n = buckets.length;
+  const pick = (idx: number[]) => idx.filter((i) => i >= 0 && i < n).map((i) => buckets[i].label);
+  switch (kind) {
+    case "day":
+      return ["0", "6", "12", "18", "24"];
+    case "week":
+      return buckets.map((b) => b.label);
+    case "month":
+      return pick([0, 7, 14, 21, n - 1]);
+    case "year":
+      return n <= 12 ? buckets.map((b) => b.label) : pick([0, Math.floor(n / 2), n - 1]);
+    case "all": {
+      const withYear = (b: Bucket) => `${b.label} ${String(b.start.getFullYear()).slice(2)}`;
+      return n <= 1 ? buckets.map(withYear) : [withYear(buckets[0]), withYear(buckets[n - 1])];
+    }
+    default:
+      return pick([0, Math.floor(n / 2), n - 1]);
+  }
+}
+
+/** "all'ora", "al giorno", "a settimana", "al mese": per i titoli dei grafici. */
+export function perBucket(kind: PeriodKind): string {
+  if (kind === "day") return "all'ora";
+  if (kind === "week" || kind === "month") return "al giorno";
+  if (kind === "quarter") return "a settimana";
+  return "al mese";
 }

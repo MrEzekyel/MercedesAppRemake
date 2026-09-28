@@ -1,14 +1,25 @@
 import { useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { SubPage } from "../src/components/trips/SubPage";
-import { Eyebrow, GOOD, HAIRLINE_SOFT, PeriodNav, Segmented } from "../src/components/trips/ui";
+import { Eyebrow, GOOD, HAIRLINE_SOFT, PeriodPicker, Segmented } from "../src/components/trips/ui";
 import { colors, radius, spacing } from "../src/theme";
 import { useBasics, useTrips } from "../src/trips/data";
 import * as f from "../src/trips/format";
-import { periodFor, previousRange } from "../src/trips/period";
+import { periodFor, previousRange, type PeriodKind } from "../src/trips/period";
 import { delta, totals, type Totals } from "../src/trips/stats";
 
-type Mode = "month" | "year" | "yoy";
+type Against = "prev" | "yoy";
+const KINDS: PeriodKind[] = ["week", "month", "quarter", "year"];
+
+/** "1–24 set 2026", "22 set – 28 set 2026": il tratto esatto confrontato. */
+function rangeLabel(start: Date, endExclusive: Date): string {
+  const end = new Date(endExclusive.getTime() - 1);
+  const m = (d: Date) => d.toLocaleDateString("it-IT", { month: "short" });
+  if (start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear()) {
+    return `${start.getDate()}–${end.getDate()} ${m(end)} ${end.getFullYear()}`;
+  }
+  return `${start.getDate()} ${m(start)} – ${end.getDate()} ${m(end)} ${end.getFullYear()}`;
+}
 
 /**
  * Due periodi a specchio: A a sinistra, B a destra, barre che si guardano.
@@ -16,29 +27,29 @@ type Mode = "month" | "year" | "yoy";
  * scorso. Per un periodo in corso si confronta lo stesso tratto di giorni.
  */
 export default function CompareScreen() {
-  const [mode, setMode] = useState<Mode>("month");
+  const [kind, setKind] = useState<PeriodKind>("month");
   const [offset, setOffset] = useState(0);
+  const [against, setAgainst] = useState<Against>("prev");
   const basics = useBasics();
   const price = basics.price.value;
 
-  const a = useMemo(() => periodFor(mode === "year" ? "year" : "month", offset), [mode, offset]);
+  const a = useMemo(() => periodFor(kind, offset), [kind, offset]);
+  // "Anno scorso" per l'anno coincide col precedente.
+  const yoy = against === "yoy" && kind !== "year";
   const b = useMemo(() => {
-    if (mode !== "yoy") return previousRange(a) as { start: Date; end: Date };
+    if (!yoy) return previousRange(a) as { start: Date; end: Date };
     const shift = (d: Date) => new Date(d.getFullYear() - 1, d.getMonth(), d.getDate(), d.getHours(), d.getMinutes());
     return { start: shift(a.start), end: shift(a.end) };
-  }, [a, mode]);
+  }, [a, yoy]);
   const tripsA = useTrips(a).trips;
   const tripsB = useTrips(b).trips;
   const A = totals(tripsA, price);
   const B = totals(tripsB, price);
 
-  const labelA = a.label;
-  const labelB =
-    mode === "year"
-      ? String(b.start.getFullYear())
-      : `${capital(b.start.toLocaleDateString("it-IT", { month: "long" }))}${mode === "yoy" ? ` ${b.start.getFullYear()}` : ""}`;
-  const partial = a.end < a.fullEnd;
-  const range = partial && mode !== "year" ? `1–${a.end.getDate()}` : mode === "year" && partial ? `fino al ${f.shortDate(a.end)}` : "";
+  const labelA = rangeLabel(a.start, a.end);
+  const labelB = rangeLabel(b.start, b.end);
+  const nameA = a.label;
+  const nameB = yoy ? `${a.label.replace(/ \d{4}$/, "")} ${b.start.getFullYear()}` : capital(periodFor(kind, offset - 1).label);
 
   const rows = [
     row("KM", A.km, B.km, (v) => f.km(v)),
@@ -51,31 +62,31 @@ export default function CompareScreen() {
 
   return (
     <SubPage title="Confronta">
-      <Segmented
-        options={[
-          { key: "month", label: "Mese" },
-          { key: "year", label: "Anno" },
-          { key: "yoy", label: "Anno scorso" },
-        ]}
-        value={mode}
-        onChange={(m) => {
-          setMode(m);
-          setOffset(0);
-        }}
-      />
-      <PeriodNav caption={a.caption} onPrev={() => setOffset((o) => o - 1)} onNext={() => setOffset((o) => Math.min(0, o + 1))} canNext={offset < 0} />
+      <PeriodPicker kinds={KINDS} kind={kind} offset={offset} caption={a.caption} onKind={setKind} onOffset={setOffset} />
+      <View style={styles.against}>
+        <Text style={styles.againstLabel}>Contro</Text>
+        <Segmented
+          small
+          options={[
+            { key: "prev", label: "Periodo precedente" },
+            { key: "yoy", label: "Anno scorso" },
+          ]}
+          value={against}
+          onChange={setAgainst}
+        />
+      </View>
 
       <View style={styles.heads}>
         <View style={styles.headSide}>
           <Eyebrow color={colors.accent}>A</Eyebrow>
-          <Text style={styles.headName}>{labelA.replace(/ \d{4}$/, "")}</Text>
-          <Text style={styles.headSub}>{mode === "year" ? range : [range, String(a.start.getFullYear())].filter(Boolean).join(" · ")}</Text>
+          <Text style={styles.headName} numberOfLines={1} adjustsFontSizeToFit>{nameA}</Text>
+          <Text style={styles.headSub}>{labelA}</Text>
         </View>
         <Text style={styles.vs}>vs</Text>
         <View style={[styles.headSide, styles.right]}>
           <Eyebrow color={colors.textSecondary}>B</Eyebrow>
-          <Text style={styles.headName}>{labelB.replace(/ \d{4}$/, "")}</Text>
-          <Text style={styles.headSub}>{mode === "year" ? range : [range, String(b.start.getFullYear())].filter(Boolean).join(" · ")}</Text>
+          <Text style={[styles.headName, styles.rightText]} numberOfLines={1} adjustsFontSizeToFit>{nameB}</Text>
+          <Text style={styles.headSub}>{labelB}</Text>
         </View>
       </View>
 
@@ -142,6 +153,9 @@ const styles = StyleSheet.create({
   headSide: { flex: 1, gap: 2 },
   right: { alignItems: "flex-end" },
   headName: { fontSize: 22, fontWeight: "600", color: colors.textPrimary },
+  rightText: { textAlign: "right" },
+  against: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, marginTop: -12 },
+  againstLabel: { fontSize: 12, color: colors.textTertiary },
   headSub: { fontSize: 12, color: colors.textTertiary },
   vs: { width: 40, textAlign: "center", fontSize: 13, color: colors.textTertiary, paddingBottom: 18 },
 

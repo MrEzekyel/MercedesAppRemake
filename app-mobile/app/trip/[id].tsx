@@ -14,7 +14,7 @@ import { totals } from "../../src/trips/stats";
 import type { TripDetail } from "../../src/types";
 
 const { width: SCREEN_W } = Dimensions.get("window");
-const MAP_H = 560;
+const MAP_H = 480;
 const TAGS = ["Personale", "Lavoro", "Commissione"];
 
 /**
@@ -221,7 +221,7 @@ function RouteBackdrop({ trip, fromColor, toColor }: { trip: TripDetail; fromCol
   }
   if (coords.length === 0) return null;
   const fitRoute = () =>
-    map.current?.fitToCoordinates(coords, { edgePadding: { top: 250, bottom: 130, left: 70, right: 70 }, animated: false });
+    map.current?.fitToCoordinates(coords, { edgePadding: { top: 190, bottom: 150, left: 70, right: 70 }, animated: false });
 
   return (
     <View style={styles.backdrop} pointerEvents="none">
@@ -267,11 +267,11 @@ const styles = StyleSheet.create({
   loading: { marginTop: 40 },
   backdrop: { position: "absolute", top: 0, left: 0, width: SCREEN_W, height: MAP_H },
   dim: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(6,9,16,0.16)" },
-  fadeTop: { position: "absolute", top: 0, left: 0, right: 0, height: 330 },
+  fadeTop: { position: "absolute", top: 0, left: 0, right: 0, height: 250 },
   fadeBottom: { position: "absolute", bottom: 0, left: 0, right: 0, height: 200 },
   endpoint: { width: 18, height: 18, borderRadius: 9, borderWidth: 3, borderColor: colors.background },
 
-  mapSpace: { height: 210, marginTop: -26 },
+  mapSpace: { height: 220, marginTop: -26 },
 
   head: { gap: 4 },
   titleRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 },

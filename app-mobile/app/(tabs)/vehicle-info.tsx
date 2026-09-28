@@ -41,7 +41,6 @@ import {
 import { VehicleGreeting } from "../../src/components/VehicleGreeting";
 import { colors, radius, spacing } from "../../src/theme";
 import type { VehicleState } from "../../src/types";
-import { useSwipeNav } from "../../src/useSwipeNav";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 /**
@@ -127,11 +126,6 @@ export default function InfoVeicoloScreen() {
   const warnings = Object.entries(WARNING_LABELS).filter(([key]) => state?.warnings?.[key]);
   const service = state?.service_interval_days ?? null;
 
-  // Ultima tab: solo a destra c'e' un'altra schermata (Viaggi).
-  const swipe = useSwipeNav({
-    onSwipeRight: () => play("info", "trips", () => router.replace("/trips")),
-  });
-
   return (
     <ScrollView
       ref={scrollRef}
@@ -140,7 +134,6 @@ export default function InfoVeicoloScreen() {
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.textSecondary} />
       }
-      {...swipe}
     >
       <View style={styles.hero}>
         <Image

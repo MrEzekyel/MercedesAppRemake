@@ -57,6 +57,7 @@ export default function RootLayout() {
           <Stack.Screen name="records" options={SUBPAGE} />
           <Stack.Screen name="compare" options={SUBPAGE} />
           <Stack.Screen name="trip/[id]" options={SUBPAGE} />
+          <Stack.Screen name="places/[id]" options={SUBPAGE} />
           <Stack.Screen name="place/[id]" options={{ headerShown: false, presentation: "modal" }} />
           <Stack.Screen
             name="refuel/[id]"

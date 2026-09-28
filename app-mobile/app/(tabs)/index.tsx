@@ -42,9 +42,11 @@ export default function StatoScreen() {
     setRefreshing(false);
   }, [load]);
 
-  // Prima tab: solo a sinistra c'e' un'altra schermata (Viaggi).
+  // Lo scorrimento laterale vale solo dentro la sezione Auto: verso
+  // sinistra si apre il dettaglio (e dal dettaglio verso destra si torna
+  // qui). Fra le tab si passa solo dalla tab bar.
   const swipe = useSwipeNav({
-    onSwipeLeft: () => play("home", "trips", () => router.replace("/trips")),
+    onSwipeLeft: () => play("home", "detail", () => router.push("/vehicle-detail")),
   });
 
   return (

@@ -1,25 +1,22 @@
 import { router } from "expo-router";
-import { useMemo, useState } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
-import MapView, { Circle, Marker, Polyline } from "react-native-maps";
+import { useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { PlusIcon } from "../src/components/icons";
 import { Heatmap, HBars } from "../src/components/trips/charts";
 import { SubPage } from "../src/components/trips/SubPage";
+import { TripsMap } from "../src/components/trips/TripsMap";
 import {
-  Dot, EmptyNote, Eyebrow, HAIRLINE, PlaceGlyph, SectionHeader, SmallPill, WARN,
+  Dot, EmptyNote, Eyebrow, HAIRLINE, PeriodPicker, PlaceGlyph, SectionHeader, WARN,
 } from "../src/components/trips/ui";
 import { colors, radius, spacing } from "../src/theme";
-import { useAddresses, useBasics, usePointLabels, useTrips } from "../src/trips/data";
+import { useAddresses, useBasics, usePeriodTrips, usePointLabels } from "../src/trips/data";
+import type { PeriodKind } from "../src/trips/period";
 import * as f from "../src/trips/format";
 import { PLACE_ICON_PATHS } from "../src/trips/places";
 import { closedTrips, distanceBuckets, HEAT_BANDS, heatmap, placeStats, recurringRoute, type Leg } from "../src/trips/stats";
 import type { TripSummary } from "../src/types";
 
-const RANGES = [
-  { label: "3 mesi", days: 90 },
-  { label: "Anno", days: 365 },
-  { label: "Tutto", days: 365 * 30 },
-];
+const KINDS: PeriodKind[] = ["day", "week", "month", "quarter", "year", "all"];
 const DAYS = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
 
 /**
@@ -29,13 +26,9 @@ const DAYS = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
  * come luoghi, con un tocco.
  */
 export default function HabitsScreen() {
-  const [rangeIndex, setRangeIndex] = useState(0);
-  const range = useMemo(() => {
-    const end = new Date();
-    return { start: new Date(end.getTime() - RANGES[rangeIndex].days * 86400000), end };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rangeIndex]);
-  const { trips } = useTrips(range, { route: true });
+  const [kind, setKind] = useState<PeriodKind>("quarter");
+  const [offset, setOffset] = useState(0);
+  const { period, trips } = usePeriodTrips(kind, offset, { route: true, withPrev: false });
   const basics = useBasics();
   const price = basics.price.value;
   const closed = closedTrips(trips);
@@ -50,18 +43,24 @@ export default function HabitsScreen() {
   const buckets = distanceBuckets(closed);
 
   return (
-    <SubPage
-      title="Abitudini e luoghi"
-      right={<SmallPill label={RANGES[rangeIndex].label} onPress={() => setRangeIndex((i) => (i + 1) % RANGES.length)} />}
-    >
-      <TripsMap trips={closed} basics={basics} />
+    <SubPage title="Abitudini e luoghi">
+      <PeriodPicker kinds={KINDS} kind={kind} offset={offset} caption={period.caption} onKind={setKind} onOffset={setOffset} />
+
+      <TripsMap
+        key={period.caption}
+        trips={closed}
+        places={basics.places}
+        placeMap={basics.placeMap}
+        state={basics.state}
+        onPlacePress={(p) => router.push(`/places/${p.id}`)}
+      />
 
       <View style={styles.block}>
         <SectionHeader title="I tuoi luoghi" right={stats.length ? "arrivi · km · costo" : undefined} />
         {stats.map((s) => (
           <Pressable
             key={s.place.id}
-            onPress={() => router.push(`/place/${s.place.id}`)}
+            onPress={() => router.push(`/places/${s.place.id}`)}
             style={({ pressed }) => [styles.placeRow, pressed && styles.pressed]}
           >
             <PlaceGlyph d={PLACE_ICON_PATHS[s.place.icon]} color={s.place.color} />
@@ -129,91 +128,6 @@ export default function HabitsScreen() {
         )}
       </View>
     </SubPage>
-  );
-}
-
-/** Mappa scura a tutta larghezza: percorsi colorati per meta, luoghi col loro raggio, l'auto dov'e' ora. */
-function TripsMap({ trips, basics }: { trips: TripSummary[]; basics: ReturnType<typeof useBasics> }) {
-  const lines = trips.filter((t) => t.route.length >= 2);
-  const points: { latitude: number; longitude: number }[] = [
-    ...lines.flatMap((t) => t.route.map(([lon, lat]) => ({ latitude: lat, longitude: lon }))),
-    ...basics.places.map((p) => ({ latitude: p.latitude, longitude: p.longitude })),
-  ];
-  const car = basics.state?.latitude != null && basics.state.longitude != null
-    ? { latitude: basics.state.latitude, longitude: basics.state.longitude }
-    : null;
-  if (car) points.push(car);
-  if (points.length === 0) return null;
-  const region = fit(points);
-  // Auto parcheggiata in un luogo salvato: lo dice l'etichetta del luogo,
-  // invece di un secondo segnaposto sopra quello.
-  const carPlace = car
-    ? basics.places.find((p) => distanceM(car, p.latitude, p.longitude) <= p.radius_m) ?? null
-    : null;
-
-  return (
-    <View style={styles.mapWrap}>
-      <MapView
-        style={StyleSheet.absoluteFill}
-        initialRegion={region}
-        userInterfaceStyle="dark"
-        mapType="mutedStandard"
-        showsPointsOfInterests={false}
-        showsBuildings={false}
-        pitchEnabled={false}
-        toolbarEnabled={false}
-      >
-        {lines.map((t) => {
-          const place = t.end_place_id ? basics.placeMap.get(t.end_place_id) : null;
-          return (
-            <Polyline
-              key={t.id}
-              coordinates={t.route.map(([lon, lat]) => ({ latitude: lat, longitude: lon }))}
-              strokeColor={place ? `${place.color}B3` : "rgba(255,255,255,0.35)"}
-              strokeWidth={place ? 2.5 : 1.5}
-              lineCap="round"
-              lineJoin="round"
-            />
-          );
-        })}
-        {basics.places.map((p) => (
-          <Circle
-            key={`c${p.id}`}
-            center={{ latitude: p.latitude, longitude: p.longitude }}
-            radius={p.radius_m}
-            strokeColor={p.color}
-            fillColor={`${p.color}22`}
-            strokeWidth={1}
-          />
-        ))}
-        {basics.places.map((p) => (
-          <Marker key={p.id} coordinate={{ latitude: p.latitude, longitude: p.longitude }} onPress={() => router.push(`/place/${p.id}`)}>
-            <View style={styles.pin}>
-              {p.id === carPlace?.id ? <CarThumb heading={basics.state?.heading ?? 0} small /> : <Dot color={p.color} size={12} />}
-              <Text style={styles.pinText}>{p.id === carPlace?.id ? `${p.name} · auto qui` : p.name}</Text>
-            </View>
-          </Marker>
-        ))}
-        {car && !carPlace && (
-          <Marker coordinate={car} anchor={{ x: 0.5, y: 0.5 }}>
-            <CarThumb heading={basics.state?.heading ?? 0} />
-          </Marker>
-        )}
-      </MapView>
-    </View>
-  );
-}
-
-/** L'auto vista dall'alto (la foto di Info veicolo), ruotata come e' parcheggiata. */
-function CarThumb({ heading, small }: { heading: number; small?: boolean }) {
-  return (
-    <View style={[styles.car, small && styles.carSmall, { transform: [{ rotate: `${heading}deg` }] }]}>
-      <Image
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        source={require("../assets/vehicle/top.jpg")}
-        style={small ? styles.carImageSmall : styles.carImage}
-      />
-    </View>
   );
 }
 
@@ -309,28 +223,6 @@ function frequentUnsaved(trips: TripSummary[], addresses: Map<string, string>) {
     .map(([key, g]) => ({ key, ...g }));
 }
 
-function distanceM(a: { latitude: number; longitude: number }, lat: number, lon: number): number {
-  const dLat = ((lat - a.latitude) * Math.PI) / 180;
-  const dLon = ((lon - a.longitude) * Math.PI) / 180;
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((a.latitude * Math.PI) / 180) * Math.cos((lat * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
-  return 2 * 6371000 * Math.asin(Math.sqrt(h));
-}
-
-function fit(points: { latitude: number; longitude: number }[]) {
-  const lats = points.map((p) => p.latitude);
-  const lons = points.map((p) => p.longitude);
-  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-  const minLon = Math.min(...lons), maxLon = Math.max(...lons);
-  return {
-    latitude: (minLat + maxLat) / 2,
-    longitude: (minLon + maxLon) / 2,
-    latitudeDelta: Math.max(0.02, (maxLat - minLat) * 1.4),
-    longitudeDelta: Math.max(0.02, (maxLon - minLon) * 1.4),
-  };
-}
-
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   pressed: { opacity: 0.6 },
@@ -338,30 +230,6 @@ const styles = StyleSheet.create({
   body: { fontSize: 15, color: colors.textPrimary },
   muted: { fontSize: 12, lineHeight: 17, color: colors.textSecondary },
   link: { fontSize: 15, color: colors.accent },
-
-  mapWrap: { height: 330, marginHorizontal: -spacing.md, overflow: "hidden", backgroundColor: colors.backgroundBand },
-  pin: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: radius.pill,
-    backgroundColor: "rgba(6,9,16,0.85)",
-  },
-  pinText: { fontSize: 11, fontWeight: "600", color: colors.textPrimary },
-  car: {
-    width: 26,
-    height: 48,
-    borderRadius: 9,
-    overflow: "hidden",
-    borderWidth: 1.5,
-    borderColor: "rgba(79,143,209,0.8)",
-  },
-  // Ritaglio della foto dall'alto: l'auto occupa il terzo centrale dello scatto.
-  carImage: { position: "absolute", left: -26, top: -46, width: 78, height: 140 },
-  carSmall: { width: 14, height: 26, borderRadius: 5, borderWidth: 1 },
-  carImageSmall: { position: "absolute", left: -14, top: -25, width: 42, height: 75 },
 
   placeRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 4, minHeight: 44 },
   placeHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" },

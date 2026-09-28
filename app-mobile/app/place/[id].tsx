@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from "react-native";
@@ -10,6 +10,8 @@ import { CloseIcon, PathIcon } from "../../src/components/icons";
 import { Eyebrow, HAIRLINE, softColor } from "../../src/components/trips/ui";
 import { colors, radius, spacing } from "../../src/theme";
 import { addressAt, invalidatePlaces, useBasics, useTrips } from "../../src/trips/data";
+import { goBack } from "../../src/trips/nav";
+import { searchAddress, type AddressHit } from "../../src/trips/search";
 import { PLACE_COLORS, PLACE_ICON_PATHS, PLACE_ICONS, RADIUS_CHOICES } from "../../src/trips/places";
 import type { PlaceIcon } from "../../src/types";
 
@@ -42,6 +44,35 @@ export default function PlaceScreen() {
   const [address, setAddress] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const map = useRef<MapView>(null);
+  const [query, setQuery] = useState("");
+  const [hits, setHits] = useState<AddressHit[]>([]);
+
+  // Suggerimenti mentre si scrive, con una pausa di 350 ms fra una
+  // richiesta e l'altra; una ricerca vecchia viene annullata.
+  useEffect(() => {
+    if (query.trim().length < 3) {
+      setHits([]);
+      return;
+    }
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => {
+      searchAddress(query.trim(), coord ?? null, ctrl.signal).then(setHits).catch(() => undefined);
+    }, 350);
+    return () => {
+      clearTimeout(timer);
+      ctrl.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
+
+  const pick = (hit: AddressHit) => {
+    const next = { latitude: hit.latitude, longitude: hit.longitude };
+    setCoord(next);
+    setQuery("");
+    setHits([]);
+    map.current?.animateToRegion({ ...next, latitudeDelta: 0.012, longitudeDelta: 0.012 }, 400);
+  };
 
   // Valori iniziali: il luogo esistente, oppure la posizione dell'auto.
   useEffect(() => {
@@ -86,7 +117,7 @@ export default function PlaceScreen() {
       if (existing) await api.updatePlace(existing.id, body);
       else await api.createPlace(body);
       invalidatePlaces();
-      router.back();
+      goBack();
     } catch (e) {
       Alert.alert("Luogo non salvato", e instanceof ApiError ? e.message : "Backend non raggiungibile");
     } finally {
@@ -104,7 +135,7 @@ export default function PlaceScreen() {
         onPress: async () => {
           await api.deletePlace(existing.id).catch(() => undefined);
           invalidatePlaces();
-          router.back();
+          goBack();
         },
       },
     ]);
@@ -115,6 +146,7 @@ export default function PlaceScreen() {
       <View style={styles.map}>
         {coord && (
           <MapView
+            ref={map}
             style={StyleSheet.absoluteFill}
             initialRegion={{ ...coord, latitudeDelta: 0.012, longitudeDelta: 0.012 }}
             userInterfaceStyle="dark"
@@ -130,7 +162,7 @@ export default function PlaceScreen() {
             </Marker>
           </MapView>
         )}
-        <Pressable onPress={() => router.back()} style={[styles.close, { top: insets.top + 8 }]} accessibilityLabel="Chiudi">
+        <Pressable onPress={() => goBack()} style={[styles.close, { top: insets.top + 8 }]} accessibilityLabel="Chiudi">
           <CloseIcon size={16} color={colors.textPrimary} strokeWidth={1.8} />
         </Pressable>
         <Text style={styles.mapHint}>Tocca la mappa o trascina il punto per spostarlo</Text>
@@ -141,6 +173,34 @@ export default function PlaceScreen() {
         <View style={{ gap: 2 }}>
           <Text style={styles.title}>{existing ? "Modifica luogo" : "Salva come luogo"}</Text>
           {address && <Text style={styles.muted}>{address}</Text>}
+        </View>
+
+        <View style={styles.field}>
+          <Eyebrow>CERCA UN INDIRIZZO</Eyebrow>
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Via, numero civico, città o nome del posto"
+            placeholderTextColor="rgba(255,255,255,0.25)"
+            style={styles.input}
+            selectionColor={colors.accent}
+            autoCorrect={false}
+            returnKeyType="search"
+          />
+          {hits.length > 0 && (
+            <View style={styles.hits}>
+              {hits.map((h, i) => (
+                <Pressable
+                  key={h.key}
+                  onPress={() => pick(h)}
+                  style={({ pressed }) => [styles.hit, i > 0 && styles.hitLine, pressed && styles.pressed]}
+                >
+                  <Text style={styles.hitTitle} numberOfLines={1}>{h.title}</Text>
+                  {h.detail ? <Text style={styles.muted} numberOfLines={1}>{h.detail}</Text> : null}
+                </Pressable>
+              ))}
+            </View>
+          )}
         </View>
 
         <View style={styles.field}>
@@ -310,5 +370,10 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.4 },
   saveText: { fontSize: 16, fontWeight: "600", color: colors.background },
   delete: { height: 44, alignItems: "center", justifyContent: "center" },
+  pressed: { opacity: 0.6 },
+  hits: { borderRadius: radius.sm, borderWidth: 1, borderColor: HAIRLINE, backgroundColor: colors.surface, overflow: "hidden" },
+  hit: { paddingHorizontal: 14, paddingVertical: 10, gap: 2 },
+  hitLine: { borderTopWidth: 1, borderTopColor: HAIRLINE },
+  hitTitle: { fontSize: 15, color: colors.textPrimary },
   deleteText: { fontSize: 15, color: colors.danger },
 });

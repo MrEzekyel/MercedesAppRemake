@@ -2,10 +2,10 @@
  * Guscio delle pagine di approfondimento di Viaggi (Consumi, Abitudini,
  * Record, Confronto, dettaglio viaggio).
  *
- * Header, saluto e tab bar sono gli stessi componenti delle tab: con la
- * dissolvenza fra le pagine (vedi app/_layout.tsx) restano fermi al loro
- * posto e cambia solo cio' che sta sotto. Dietro, la foto di Viaggi sfocata
- * fa da atmosfera; una pagina puo' passarne un'altra (mappa, render).
+ * In alto solo il logo (senza saluto: qui conta il contenuto), in basso la
+ * stessa tab bar delle tab, che con la dissolvenza fra le pagine (vedi
+ * app/_layout.tsx) resta ferma. Dietro, la foto di Viaggi sfocata fa da
+ * atmosfera; una pagina puo' passarne un'altra (mappa, render).
  */
 import { router } from "expo-router";
 import type { ReactNode } from "react";
@@ -15,7 +15,8 @@ import { colors, spacing } from "../../theme";
 import { AppHeader } from "../AppHeader";
 import { AppTabBar, type TabName } from "../AppTabBar";
 import { TAB_SCENE, useCarTransition } from "../CarTransition";
-import { VehicleGreeting } from "../VehicleGreeting";
+import { goBack } from "../../trips/nav";
+import { tripsScroll } from "../../trips/scroll";
 import { SubPageBar } from "./ui";
 
 const { width: SCREEN_W } = Dimensions.get("window");
@@ -44,23 +45,26 @@ export function useLeaveToTab() {
   return (name: TabName) => {
     if (router.canDismiss()) router.dismissAll();
     if (name === "trips") return;
-    play(TAB_SCENE.trips, TAB_SCENE[name], () => router.navigate(name === "index" ? "/" : "/vehicle-info"));
+    play(TAB_SCENE.trips, TAB_SCENE[name], () => {
+      tripsScroll.toTop();
+      router.navigate(name === "index" ? "/" : "/vehicle-info");
+    });
   };
 }
 
 export function SubPage({
   title, right, backdrop, children, backLabel,
 }: { title: string; right?: ReactNode; backdrop?: ReactNode; children: ReactNode; backLabel?: string }) {
-  const { vehicleState } = useCarTransition();
   const leave = useLeaveToTab();
   return (
     <View style={styles.screen}>
-      {backdrop === undefined ? <BlurredHero /> : backdrop}
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Dentro lo scroll: l'immagine sale insieme al contenuto invece di
+            restare ferma sotto al testo che le scorre sopra. */}
+        {backdrop === undefined ? <BlurredHero /> : backdrop}
         <AppHeader />
-        <VehicleGreeting state={vehicleState} />
         <View style={styles.body}>
-          <SubPageBar title={title} right={right} backLabel={backLabel} onBack={() => router.back()} />
+          <SubPageBar title={title} right={right} backLabel={backLabel} onBack={goBack} />
           {children}
         </View>
       </ScrollView>
@@ -71,8 +75,8 @@ export function SubPage({
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  heroWrap: { position: "absolute", top: 0, left: 0, right: 0, height: 520 },
-  hero: { position: "absolute", top: -60, left: -40, width: SCREEN_W + 80, height: 580, opacity: 0.55 },
+  heroWrap: { position: "absolute", top: 0, left: 0, right: 0, height: 440 },
+  hero: { position: "absolute", top: -120, left: -40, width: SCREEN_W + 80, height: 560, opacity: 0.55 },
   heroFade: { position: "absolute", left: 0, right: 0, bottom: 0, height: 220 },
   content: { paddingBottom: 130 },
   body: { paddingHorizontal: spacing.md, gap: 26 },

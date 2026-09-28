@@ -8,17 +8,17 @@ import { CompareIcon, FuelIcon, PinIcon, TrophyIcon } from "../../src/components
 import { Bars } from "../../src/components/trips/charts";
 import { TripRow } from "../../src/components/trips/TripRow";
 import {
-  BigFigure, Chips, DeltaPill, EmptyNote, Eyebrow, Insight, NavRow, PeriodNav, Segmented, StatGrid, type SegmentOption,
+  BigFigure, Chips, DeltaPill, EmptyNote, Eyebrow, Insight, NavRow, PeriodPicker, StatGrid, type SegmentOption,
 } from "../../src/components/trips/ui";
 import { VehicleGreeting } from "../../src/components/VehicleGreeting";
 import { colors, radius, spacing } from "../../src/theme";
-import { useAddresses, useBasics, useTrips } from "../../src/trips/data";
+import { useAddresses, useBasics, usePeriodTrips } from "../../src/trips/data";
+import { tripsScroll } from "../../src/trips/scroll";
 import * as f from "../../src/trips/format";
-import { bucketsFor, periodFor, previousRange, type Period, type PeriodKind } from "../../src/trips/period";
+import { axisLabelsFor, bucketName, bucketsFor, perBucket, type Period, type PeriodKind } from "../../src/trips/period";
 import { endpoint } from "../../src/trips/places";
 import { closedTrips, delta, insight, type Metric, series, totals } from "../../src/trips/stats";
 import type { TripSummary } from "../../src/types";
-import { useSwipeNav } from "../../src/useSwipeNav";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 /**
@@ -33,12 +33,7 @@ const CHART_W = SCREEN_W - spacing.md * 2;
 /** Viaggi mostrati prima di "Tutti i viaggi". */
 const FIRST_TRIPS = 6;
 
-const KINDS: SegmentOption<PeriodKind>[] = [
-  { key: "week", label: "Settimana" },
-  { key: "month", label: "Mese" },
-  { key: "year", label: "Anno" },
-  { key: "all", label: "Tutto" },
-];
+const KINDS: PeriodKind[] = ["day", "week", "month", "year", "all"];
 
 const METRICS: SegmentOption<Metric>[] = [
   { key: "km", label: "Km" },
@@ -47,7 +42,14 @@ const METRICS: SegmentOption<Metric>[] = [
   { key: "cost", label: "Costo" },
 ];
 
-const ALL_SINCE = new Date(2000, 0, 1);
+/** Cosa mostra il grafico per ogni scelta: titolo e unita' dell'asse Y. */
+const METRIC_TITLES: Record<Metric, string> = {
+  km: "Km percorsi",
+  trips: "Viaggi",
+  time: "Minuti alla guida",
+  cost: "Carburante speso",
+};
+const METRIC_UNITS: Record<Metric, string> = { km: "KM", trips: "VIAGGI", time: "MINUTI", cost: "EURO" };
 
 /**
  * Resoconto viaggi: quanto hai guidato e quanto ti e' costato nel periodo
@@ -66,46 +68,22 @@ export default function ViaggiScreen() {
   const basics = useBasics();
   const price = basics.price.value;
 
-  // "Tutto" parte dal primo viaggio, che si conosce solo dopo averli scaricati.
-  const base = useMemo(() => periodFor(kind, offset), [kind, offset]);
-  const { trips, error } = useTrips(kind === "all" ? { start: ALL_SINCE, end: base.end } : base);
-  const firstTripAt = useMemo(() => {
-    const last = trips[trips.length - 1];
-    return last ? new Date(last.started_at) : undefined;
-  }, [trips]);
-  const period: Period = useMemo(
-    () => (kind === "all" ? periodFor("all", 0, new Date(), firstTripAt) : base),
-    [kind, base, firstTripAt]
-  );
-  const prevRange = useMemo(() => previousRange(period), [period]);
-  const prev = useTrips(prevRange);
+  const { period, trips, prevTrips, prevRange, error } = usePeriodTrips(kind, offset);
 
-  useFocusEffect(
-    useCallback(() => {
-      // Uscendo si torna in cima: al ritorno header e saluto devono stare
-      // dove li ridisegna il video di transizione, non scrollati via.
-      return () => scrollRef.current?.scrollTo({ y: 0, animated: false });
-    }, [])
-  );
+  // In cima solo quando si passa a un'altra tab (vedi src/trips/scroll.ts):
+  // dagli approfondimenti si torna esattamente dove si era.
+  useEffect(() => tripsScroll.register(() => scrollRef.current?.scrollTo({ y: 0, animated: false })), []);
   useEffect(() => reportVehicleState(basics.state), [basics.state, reportVehicleState]);
   useEffect(() => setExpanded(false), [kind, offset]);
 
   const cur = totals(trips, price);
-  const before = prevRange ? totals(prev.trips, price) : null;
+  const before = prevRange ? totals(prevTrips, price) : null;
   const buckets = useMemo(() => bucketsFor(period), [period]);
   const values = series(trips, buckets, metric, price);
-  const past = values.filter((v): v is number => v != null);
-  const mean = past.length ? past.reduce((a, b) => a + b, 0) / past.length : 0;
-  const peak = past.length ? values.indexOf(Math.max(...past)) : -1;
-  const note = insight(trips, prev.trips, period.previousName);
+  const note = insight(trips, prevTrips, period.previousName);
   const closed = closedTrips(trips);
   const addresses = useAddresses(closed, basics.placeMap);
   const shown = expanded ? closed : closed.slice(0, FIRST_TRIPS);
-
-  const swipe = useSwipeNav({
-    onSwipeLeft: () => play("trips", "info", () => router.replace("/vehicle-info")),
-    onSwipeRight: () => play("trips", "home", () => router.replace("/")),
-  });
 
   const d = (a: number | null, b: number | null | undefined) => (b == null ? null : delta(a, b));
   const kmDelta = d(cur.km, before?.km);
@@ -120,7 +98,7 @@ export default function ViaggiScreen() {
         resizeMode="cover"
       />
 
-      <ScrollView ref={scrollRef} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} {...swipe}>
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {/* Header e saluto identici in tutte le schermate: restano fermi
             anche durante il video di transizione, non sfumano mai. */}
         <AppHeader />
@@ -134,19 +112,19 @@ export default function ViaggiScreen() {
             pointerEvents="none"
           />
 
+          {/* Nero anche oltre la fine: tirando giu' in fondo non deve
+              ricomparire la foto sotto il pannello. */}
+          <View style={styles.sheetBottom} pointerEvents="none" />
           <View style={styles.body}>
             <View style={styles.periodBlock}>
-              <Segmented options={KINDS} value={kind} onChange={(k) => { setKind(k); setOffset(0); }} />
-              {kind !== "all" ? (
-                <PeriodNav
-                  caption={period.caption}
-                  onPrev={() => setOffset((o) => o - 1)}
-                  onNext={() => setOffset((o) => Math.min(0, o + 1))}
-                  canNext={offset < 0}
-                />
-              ) : (
-                <Text style={styles.allCaption}>{period.caption}</Text>
-              )}
+              <PeriodPicker
+                kinds={KINDS}
+                kind={kind}
+                offset={offset}
+                caption={period.caption}
+                onKind={setKind}
+                onOffset={setOffset}
+              />
             </View>
 
             {error && <Text style={styles.error}>{error}</Text>}
@@ -193,11 +171,16 @@ export default function ViaggiScreen() {
 
             <View style={styles.chartBlock}>
               <Chips options={METRICS} value={metric} onChange={setMetric} />
-              <View style={styles.chartHead}>
-                <Text style={styles.chartCaption}>{metricCaption(metric, period)}</Text>
-                <Text style={styles.chartAvg}>media {metricValue(metric, mean)}</Text>
-              </View>
-              <Bars values={values} width={CHART_W} highlight={peak} labels={axisLabels(buckets.map((b) => b.label), period)} />
+              <Bars
+                key={`${metric}:${kind}:${offset}`}
+                values={values}
+                names={buckets.map((b) => bucketName(b, period.kind))}
+                axisLabels={axisLabelsFor(buckets, period.kind)}
+                width={CHART_W}
+                title={`${METRIC_TITLES[metric]} ${perBucket(period.kind)}`}
+                format={(v) => metricValue(metric, v)}
+                unit={METRIC_UNITS[metric]}
+              />
             </View>
 
             {note && <Insight text={note} onPress={() => router.push("/consumption")} />}
@@ -273,7 +256,8 @@ function sentence(p: Period, t: ReturnType<typeof totals>): string {
   if (p.kind === "month") {
     const m = p.label.split(" ")[0].toLowerCase();
     when = `${/^[aeiou]/.test(m) ? "Ad" : "A"} ${m}`;
-  } else if (p.kind === "week") when = p.offset === 0 ? "Questa settimana" : p.offset === -1 ? "La settimana scorsa" : `Dal ${p.label}`;
+  } else if (p.kind === "day") when = p.offset === 0 ? "Oggi" : p.offset === -1 ? "Ieri" : `${p.label},`;
+  else if (p.kind === "week") when = p.offset === 0 ? "Questa settimana" : p.offset === -1 ? "La settimana scorsa" : `Dal ${p.label}`;
   else if (p.kind === "year") when = `Nel ${p.label}`;
   else when = "Da quando registri i viaggi";
   const hours = t.seconds / 3600;
@@ -283,23 +267,11 @@ function sentence(p: Period, t: ReturnType<typeof totals>): string {
   return `${when} hai fatto ${trips} e passato ${time} alla guida${spend}.`;
 }
 
-function metricCaption(m: Metric, p: Period): string {
-  const per = p.kind === "week" || p.kind === "month" ? "al giorno" : "al mese";
-  return { km: `Km ${per}`, trips: `Viaggi ${per}`, time: `Minuti alla guida ${per}`, cost: `Carburante ${per}` }[m];
-}
-
 function metricValue(m: Metric, v: number): string {
   if (m === "km") return `${f.km(v)} km`;
-  if (m === "trips") return f.num(v);
+  if (m === "trips") return `${f.num(v, Number.isInteger(v) ? 0 : 1)} ${v === 1 ? "viaggio" : "viaggi"}`;
   if (m === "time") return f.duration(v * 60);
   return f.eur(v);
-}
-
-/** Poche etichette sotto il grafico: tutte per settimana e anno, cinque per il mese. */
-function axisLabels(labels: string[], p: Period): string[] {
-  if (p.kind === "week" || labels.length <= 12) return labels;
-  const n = labels.length;
-  return [0, 7, 14, 21, n - 1].filter((i) => i < n).map((i) => labels[i]);
 }
 
 function groupByDay(trips: TripSummary[]): [Date, TripSummary[]][] {
@@ -324,12 +296,13 @@ const styles = StyleSheet.create({
     height: SCREEN_H,
     transform: [{ scale: HERO_ZOOM }],
   },
-  content: { paddingBottom: 120 },
+  content: { paddingBottom: 0 },
   pressed: { opacity: 0.6 },
 
   sheet: { marginTop: SHEET_TOP },
   sheetFade: { position: "absolute", left: 0, right: 0, top: -150, height: 150 },
-  body: { backgroundColor: colors.background, paddingHorizontal: spacing.md, gap: 26 },
+  body: { backgroundColor: colors.background, paddingHorizontal: spacing.md, paddingBottom: 140, gap: 26 },
+  sheetBottom: { position: "absolute", left: 0, right: 0, bottom: -1000, height: 1100, backgroundColor: colors.background },
 
   periodBlock: { gap: 8 },
   allCaption: { textAlign: "center", fontSize: 12, fontWeight: "600", letterSpacing: 1.6, color: colors.textSecondary, paddingVertical: 14 },

@@ -9,6 +9,7 @@
 import type { ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
 import { colors, radius, spacing } from "../../theme";
+import type { PeriodKind } from "../../trips/period";
 import { BulbIcon, ChevronIcon, ChevronLeftIcon, PathIcon } from "../icons";
 
 export const HAIRLINE = "rgba(255,255,255,0.12)";
@@ -78,8 +79,8 @@ export interface SegmentOption<K extends string> {
 
 /** Selettore a pillola: periodo, unita', tipo di confronto. */
 export function Segmented<K extends string>({
-  options, value, onChange, small,
-}: { options: SegmentOption<K>[]; value: K; onChange: (k: K) => void; small?: boolean }) {
+  options, value, onChange, small, dense,
+}: { options: SegmentOption<K>[]; value: K; onChange: (k: K) => void; small?: boolean; dense?: boolean }) {
   return (
     <View style={[styles.segmented, small && styles.segmentedSmall]}>
       {options.map((o) => {
@@ -92,7 +93,12 @@ export function Segmented<K extends string>({
             accessibilityRole="tab"
             accessibilityState={{ selected: on }}
           >
-            <Text style={[styles.segmentText, small && styles.segmentTextSmall, on && styles.segmentTextOn]}>{o.label}</Text>
+            <Text
+              style={[styles.segmentText, (small || dense) && styles.segmentTextSmall, on && styles.segmentTextOn]}
+              numberOfLines={1}
+            >
+              {o.label}
+            </Text>
           </Pressable>
         );
       })}
@@ -102,18 +108,73 @@ export function Segmented<K extends string>({
 
 /** Pillole singole, per scegliere cosa mostra un grafico. */
 export function Chips<K extends string>({
-  options, value, onChange,
-}: { options: SegmentOption<K>[]; value: K; onChange: (k: K) => void }) {
+  options, value, onChange, small,
+}: { options: SegmentOption<K>[]; value: K; onChange: (k: K) => void; small?: boolean }) {
   return (
-    <View style={styles.chips}>
+    <View style={[styles.chips, small && styles.chipsSmall]}>
       {options.map((o) => {
         const on = o.key === value;
         return (
-          <Pressable key={o.key} onPress={() => onChange(o.key)} style={[styles.chip, on && styles.chipOn]} accessibilityRole="tab">
-            <Text style={[styles.chipText, on && styles.chipTextOn]}>{o.label}</Text>
+          <Pressable
+            key={o.key}
+            onPress={() => onChange(o.key)}
+            style={[styles.chip, small && styles.chipSmall, on && styles.chipOn]}
+            accessibilityRole="tab"
+            hitSlop={small ? 6 : 0}
+          >
+            <Text style={[styles.chipText, small && styles.chipTextSmall, on && styles.chipTextOn]}>{o.label}</Text>
           </Pressable>
         );
       })}
+    </View>
+  );
+}
+
+const KIND_LABELS: Record<PeriodKind, [string, string]> = {
+  day: ["Giorno", "Giorno"],
+  week: ["Settimana", "Sett."],
+  month: ["Mese", "Mese"],
+  quarter: ["3 mesi", "3 mesi"],
+  year: ["Anno", "Anno"],
+  all: ["Tutto", "Tutto"],
+};
+
+/**
+ * Scelta del periodo, uguale in tutte le pagine di Viaggi: il tipo in una
+ * pillola, sotto le frecce per andare indietro e avanti nel tempo.
+ */
+export function PeriodPicker({
+  kinds, kind, offset, caption, onKind, onOffset,
+}: {
+  kinds: PeriodKind[];
+  kind: PeriodKind;
+  offset: number;
+  caption: string;
+  onKind: (k: PeriodKind) => void;
+  onOffset: (o: number) => void;
+}) {
+  const short = kinds.length > 4;
+  return (
+    <View style={styles.periodPicker}>
+      <Segmented
+        options={kinds.map((k) => ({ key: k, label: KIND_LABELS[k][short ? 1 : 0] }))}
+        value={kind}
+        onChange={(k) => {
+          onKind(k);
+          onOffset(0);
+        }}
+        dense={kinds.length > 4}
+      />
+      {kind === "all" ? (
+        <Text style={styles.allCaption}>{caption}</Text>
+      ) : (
+        <PeriodNav
+          caption={caption}
+          onPrev={() => onOffset(offset - 1)}
+          onNext={() => onOffset(Math.min(0, offset + 1))}
+          canNext={offset < 0}
+        />
+      )}
     </View>
   );
 }
@@ -279,10 +340,22 @@ const styles = StyleSheet.create({
   chips: { flexDirection: "row", gap: 6 },
   chip: { height: 30, paddingHorizontal: 14, borderRadius: radius.pill, borderWidth: 1, borderColor: HAIRLINE, justifyContent: "center" },
   chipOn: { backgroundColor: colors.textPrimary, borderColor: colors.textPrimary },
+  chipsSmall: { gap: 4 },
+  chipSmall: { height: 26, paddingHorizontal: 10 },
+  chipTextSmall: { fontSize: 12 },
   chipText: { fontSize: 13, fontWeight: "600", color: colors.textSecondary },
   chipTextOn: { color: colors.background },
 
   periodNav: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  periodPicker: { gap: 8 },
+  allCaption: {
+    textAlign: "center",
+    fontSize: 12,
+    fontWeight: "600",
+    letterSpacing: 1.6,
+    color: colors.textSecondary,
+    paddingVertical: 14,
+  },
   navBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   periodCaption: { fontSize: 12, fontWeight: "600", letterSpacing: 1.6, color: colors.textSecondary },
 

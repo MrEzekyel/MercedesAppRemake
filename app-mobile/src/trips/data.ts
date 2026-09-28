@@ -10,6 +10,7 @@ import { useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError } from "../api";
 import type { Place, Refuel, TripSummary, VehicleState } from "../types";
+import { periodFor, previousRange, type Period, type PeriodKind } from "./period";
 import { useFuelPrice } from "../useFuelPrice";
 
 const cache = new Map<string, unknown>();
@@ -96,6 +97,25 @@ export function useTrips(range: { start: Date; end: Date } | null, opts: { route
     []
   );
   return { trips: res.value, error: res.error, loading: res.loading, reload: res.reload };
+}
+
+const ALL_SINCE = new Date(2000, 0, 1);
+
+/**
+ * Viaggi del periodo scelto e dello stesso tratto del periodo precedente.
+ * "Tutto" parte dal primo viaggio, che si conosce solo dopo averli scaricati.
+ */
+export function usePeriodTrips(kind: PeriodKind, offset: number, opts: { route?: boolean; withPrev?: boolean } = {}) {
+  const base = useMemo(() => periodFor(kind, offset), [kind, offset]);
+  const cur = useTrips(kind === "all" ? { start: ALL_SINCE, end: base.end } : base, { route: opts.route });
+  const oldest = cur.trips[cur.trips.length - 1]?.started_at;
+  const period: Period = useMemo(
+    () => (kind === "all" ? periodFor("all", 0, new Date(), oldest ? new Date(oldest) : undefined) : base),
+    [kind, base, oldest]
+  );
+  const prevRange = useMemo(() => (opts.withPrev === false ? null : previousRange(period)), [period, opts.withPrev]);
+  const prev = useTrips(prevRange);
+  return { period, trips: cur.trips, prevTrips: prev.trips, prevRange, error: cur.error };
 }
 
 // -- indirizzi ----------------------------------------------------------------

@@ -5,21 +5,23 @@ import { api, ApiError } from "../src/api";
 import { ColumnBars, LineChart, RangeBar, Scatter } from "../src/components/trips/charts";
 import { CONTENT_W, SubPage } from "../src/components/trips/SubPage";
 import {
-  BigFigure, EmptyNote, Eyebrow, GOOD, SectionHeader, Segmented, SmallPill, StatGrid, WARN, HAIRLINE_SOFT,
+  BigFigure, Chips, EmptyNote, Eyebrow, GOOD, HAIRLINE_SOFT, PeriodPicker, SectionHeader, Segmented, StatGrid, WARN,
 } from "../src/components/trips/ui";
 import { colors, radius } from "../src/theme";
-import { useBasics, useTrips } from "../src/trips/data";
+import { useBasics, usePeriodTrips } from "../src/trips/data";
 import * as f from "../src/trips/format";
-import { bucketsFor, monthShort, periodFor, previousRange, type PeriodKind } from "../src/trips/period";
+import { axisLabelsFor, bucketsFor, monthShort, perBucket, type PeriodKind } from "../src/trips/period";
 import { describeTrip } from "../src/trips/places";
 import { closedTrips, consumptionSeries, delta, distanceBuckets, refuelRows, totals } from "../src/trips/stats";
 
-const KINDS: { kind: PeriodKind; label: string }[] = [
-  { kind: "month", label: "Mese" },
-  { kind: "year", label: "Anno" },
-  { kind: "all", label: "Tutto" },
+const KINDS: PeriodKind[] = ["day", "week", "month", "year", "all"];
+type Span = "30" | "50" | "100" | "all";
+const SPANS: { key: Span; label: string }[] = [
+  { key: "30", label: "30" },
+  { key: "50", label: "50" },
+  { key: "100", label: "100" },
+  { key: "all", label: "Tutto" },
 ];
-const ALL_SINCE = new Date(2000, 0, 1);
 
 /**
  * Consumi e costi: quanto beve l'auto, perche' (viaggi brevi, giorni
@@ -27,52 +29,57 @@ const ALL_SINCE = new Date(2000, 0, 1);
  * litro e' l'unico dato che l'auto non sa: sta in fondo, modificabile.
  */
 export default function ConsumiScreen() {
-  const [kindIndex, setKindIndex] = useState(0);
+  const [kind, setKind] = useState<PeriodKind>("month");
+  const [offset, setOffset] = useState(0);
   const [unit, setUnit] = useState<"l100" | "kml">("l100");
-  const kind = KINDS[kindIndex].kind;
-  const period = useMemo(() => periodFor(kind, 0), [kind]);
-  const { trips } = useTrips(kind === "all" ? { start: ALL_SINCE, end: period.end } : period);
-  const prevRange = useMemo(() => previousRange(period), [period]);
-  const prev = useTrips(prevRange);
+  // I viaggi lunghi sono rari: di serie il grafico si ferma a 30 km, dove
+  // stanno quasi tutti i punti, invece di schiacciarli a sinistra.
+  const [span, setSpan] = useState<Span>("30");
+  const { period, trips, prevTrips, prevRange } = usePeriodTrips(kind, offset);
   const basics = useBasics();
   const price = basics.price;
 
   const cur = totals(trips, price.value);
-  const before = totals(prev.trips, price.value);
+  const before = totals(prevTrips, price.value);
   const consDelta = prevRange ? delta(cur.lPer100, before.lPer100) : null;
 
   const withCons = closedTrips(trips).filter((t) => t.l_per_100km != null && t.l_per_100km > 0);
   const efficient = withCons.filter((t) => (t.distance_effective_km ?? 0) >= 3);
   const best = efficient.length ? efficient.reduce((a, b) => ((b.l_per_100km ?? 99) < (a.l_per_100km ?? 99) ? b : a)) : null;
-  const worst = withCons.length ? withCons.reduce((a, b) => ((b.l_per_100km ?? 0) > (a.l_per_100km ?? 0) ? b : a)) : null;
+  // Sotto il chilometro il consumo e' rumore (0,1 km a "50 L/100"): non fa testo.
+  const measurable = withCons.filter((t) => (t.distance_effective_km ?? 0) >= 1);
+  const worst = measurable.length ? measurable.reduce((a, b) => ((b.l_per_100km ?? 0) > (a.l_per_100km ?? 0) ? b : a)) : null;
 
-  const buckets = useMemo(
-    () => bucketsFor(kind === "all" && trips.length ? periodFor("all", 0, new Date(), new Date(trips[trips.length - 1].started_at)) : period),
-    [kind, period, trips]
-  );
+  const buckets = useMemo(() => bucketsFor(period), [period]);
   const daily = consumptionSeries(trips, buckets);
+  const dailyValues = daily.filter((v): v is number => v != null);
+  const consValues = withCons.filter((t) => (t.distance_effective_km ?? 0) >= 1).map((t) => t.l_per_100km as number);
   const short = distanceBuckets(trips)[0];
-  const xMax = Math.max(30, Math.ceil(Math.max(...withCons.map((t) => t.distance_effective_km ?? 0), 0) / 10) * 10);
+  const longest = Math.max(...withCons.map((t) => t.distance_effective_km ?? 0), 0);
+  const xMax = span === "all" ? Math.max(30, Math.ceil(longest / 10) * 10) : Number(span);
 
-  const days = Math.max(1, (period.end.getTime() - (kind === "all" && trips.length ? new Date(trips[trips.length - 1].started_at).getTime() : period.start.getTime())) / 86400000);
-  const rows = refuelRows(basics.refuels, price.value);
-  const months = spendByMonth(rows);
+  const days = Math.max(1, (period.end.getTime() - period.start.getTime()) / 86400000);
+  const allRows = refuelRows(basics.refuels, price.value);
+  const rows = allRows.filter((r) => {
+    const d = new Date(r.refuel.detected_at);
+    return d >= period.start && d < period.end;
+  });
+  const months = spendByMonth(allRows);
 
   const [zone, setZone] = useState<number | null>(null);
   useEffect(() => {
     if (!basics.state?.vin) return;
     api.getFuelPriceAverage(basics.state.vin).then((a) => setZone(a.price)).catch(() => setZone(null));
   }, [basics.state?.vin]);
-  const paid = paidPrice(rows);
+  const paid = paidPrice(allRows);
   const vsZone = paid != null && zone != null ? (paid - zone) * 100 : null;
 
   const shown = (v: number | null) => (v == null ? "—" : unit === "l100" ? f.num(v) : f.num(100 / v));
 
   return (
-    <SubPage
-      title="Consumi e costi"
-      right={<SmallPill label={KINDS[kindIndex].label} onPress={() => setKindIndex((i) => (i + 1) % KINDS.length)} />}
-    >
+    <SubPage title="Consumi e costi">
+      <PeriodPicker kinds={KINDS} kind={kind} offset={offset} caption={period.caption} onKind={setKind} onOffset={setOffset} />
+
       <View style={styles.center}>
         <Segmented
           small
@@ -86,44 +93,45 @@ export default function ConsumiScreen() {
             {f.pct(consDelta)} rispetto a {period.previousName}
             {cur.lPer100 != null ? ` · ${unit === "l100" ? `${f.num(100 / cur.lPer100)} km/L` : `${f.num(cur.lPer100)} L/100 km`}` : ""}
           </Text>
-        ) : (
-          <Text style={styles.muted}>{period.caption}</Text>
-        )}
+        ) : null}
       </View>
 
-      {best && worst && cur.lPer100 != null && (
+      {cur.lPer100 != null && (
         <View style={styles.rangeBlock}>
-          <RangeBar min={best.l_per_100km as number} max={worst.l_per_100km as number} value={cur.lPer100} />
-          <View style={styles.rangeRow}>
-            <Pressable onPress={() => router.push(`/trip/${best.id}`)} style={styles.rangeSide}>
-              <Eyebrow>MIGLIORE</Eyebrow>
-              <Text style={styles.rangeValue}>{shown(best.l_per_100km)}</Text>
-              <Text style={styles.muted} numberOfLines={1}>
-                {describeTrip(best, basics.placeMap)} · {f.km(best.distance_effective_km)} km
-              </Text>
-            </Pressable>
-            <Pressable onPress={() => router.push(`/trip/${worst.id}`)} style={[styles.rangeSide, styles.right]}>
-              <Eyebrow>PEGGIORE</Eyebrow>
-              <Text style={styles.rangeValue}>{shown(worst.l_per_100km)}</Text>
-              <Text style={styles.muted} numberOfLines={1}>
-                {f.shortDate(worst.started_at)} · {f.km(worst.distance_effective_km)} km
-              </Text>
-            </Pressable>
-          </View>
+          <RangeBar value={cur.lPer100} />
+          {best && worst && (
+            <View style={styles.rangeRow}>
+              <Pressable onPress={() => router.push(`/trip/${best.id}`)} style={styles.rangeSide}>
+                <Eyebrow>MIGLIORE</Eyebrow>
+                <Text style={styles.rangeValue}>{shown(best.l_per_100km)}</Text>
+                <Text style={styles.muted} numberOfLines={1}>
+                  {describeTrip(best, basics.placeMap)} · {f.km(best.distance_effective_km)} km
+                </Text>
+              </Pressable>
+              <Pressable onPress={() => router.push(`/trip/${worst.id}`)} style={[styles.rangeSide, styles.right]}>
+                <Eyebrow>PEGGIORE</Eyebrow>
+                <Text style={styles.rangeValue}>{shown(worst.l_per_100km)}</Text>
+                <Text style={styles.muted} numberOfLines={1}>
+                  {f.shortDate(worst.started_at)} · {f.km(worst.distance_effective_km)} km
+                </Text>
+              </Pressable>
+            </View>
+          )}
         </View>
       )}
 
       <View style={styles.block}>
         <SectionHeader
-          title={kind === "month" ? "Giorno per giorno" : "Mese per mese"}
+          title={`Consumo ${perBucket(period.kind)}`}
           right={cur.lPer100 != null ? `- - media ${f.num(cur.lPer100)}` : undefined}
         />
-        {daily.some((v) => v != null) ? (
+        {dailyValues.length > 0 ? (
           <LineChart
             values={daily}
+            axisLabels={axisLabelsFor(buckets, period.kind)}
             width={CONTENT_W}
-            min={Math.max(0, Math.floor(Math.min(...daily.filter((v): v is number => v != null)) - 1))}
-            max={Math.ceil(Math.max(...daily.filter((v): v is number => v != null)) + 1)}
+            min={Math.min(4, Math.floor(Math.min(...dailyValues)))}
+            max={Math.max(10, Math.ceil(Math.max(...dailyValues)))}
             avg={cur.lPer100}
           />
         ) : (
@@ -133,20 +141,28 @@ export default function ConsumiScreen() {
 
       {withCons.length >= 3 && (
         <View style={styles.block}>
-          <SectionHeader title="Distanza e consumo" />
+          <View style={styles.headRow}>
+            <SectionHeader title="Distanza e consumo" />
+            <Chips options={SPANS} value={span} onChange={setSpan} small />
+          </View>
           <Text style={styles.explain}>
             Ogni punto è un viaggio. A sinistra i tragitti brevi, a motore ancora freddo: consumano di più.
           </Text>
           <Scatter
-            points={withCons.map((t) => ({ x: t.distance_effective_km ?? 0, y: t.l_per_100km as number }))}
+            points={measurable.map((t) => ({ x: t.distance_effective_km ?? 0, y: t.l_per_100km as number }))}
             width={CONTENT_W}
             xMax={xMax}
-            yMin={Math.max(0, Math.floor(Math.min(...withCons.map((t) => t.l_per_100km as number))) - 1)}
-            yMax={Math.ceil(Math.max(...withCons.map((t) => t.l_per_100km as number))) + 1}
+            yMin={Math.min(4, Math.floor(Math.min(...consValues)))}
+            yMax={Math.max(10, Math.ceil(Math.max(...consValues)))}
             avg={cur.lPer100}
             shadeBelowX={5}
             shadeLabel={short.lPer100 != null ? `sotto i 5 km · ${f.num(short.lPer100)}` : undefined}
           />
+          {span !== "all" && withCons.some((t) => (t.distance_effective_km ?? 0) > xMax) && (
+            <Text style={styles.muted}>
+              {withCons.filter((t) => (t.distance_effective_km ?? 0) > xMax).length} viaggi oltre {xMax} km non mostrati
+            </Text>
+          )}
         </View>
       )}
 
@@ -178,16 +194,16 @@ export default function ConsumiScreen() {
       <View>
         <SectionHeader title="Rifornimenti" right="Tutti" onRight={() => router.push("/refuels")} />
         {rows.length === 0 ? (
-          <EmptyNote text="Nessun rifornimento rilevato: compaiono da soli quando il livello del serbatoio sale." />
+          <EmptyNote text="Nessun rifornimento in questo periodo." />
         ) : (
-          rows.slice(0, 4).map((r) => {
+          rows.slice(0, 6).map((r, i) => {
             const d = new Date(r.refuel.detected_at);
             const pending = r.refuel.status === "pending";
             return (
               <Pressable
                 key={r.refuel.id}
                 onPress={() => router.push(pending ? `/refuel/${r.refuel.id}` : "/refuels")}
-                style={({ pressed }) => [styles.refuel, pressed && styles.pressed]}
+                style={({ pressed }) => [styles.refuel, i > 0 && styles.refuelLine, pressed && styles.pressed]}
               >
                 <View style={styles.refuelDate}>
                   <Text style={styles.refuelDay}>{d.getDate()}</Text>
@@ -334,7 +350,9 @@ const styles = StyleSheet.create({
   right: { alignItems: "flex-end" },
   rangeValue: { fontSize: 17, fontWeight: "500", color: colors.textPrimary },
 
-  refuel: { flexDirection: "row", alignItems: "center", gap: 14, paddingVertical: 14, borderTopWidth: 1, borderTopColor: HAIRLINE_SOFT },
+  refuel: { flexDirection: "row", alignItems: "center", gap: 14, paddingVertical: 14 },
+  refuelLine: { borderTopWidth: 1, borderTopColor: HAIRLINE_SOFT },
+  headRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   refuelDate: { width: 40, alignItems: "center" },
   refuelDay: { fontSize: 20, fontWeight: "300", color: colors.textPrimary },
   refuelTitle: { fontSize: 15, color: colors.textPrimary },
