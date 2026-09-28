@@ -4,12 +4,14 @@
     "slug": "mb-companion",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "scheme": "mbcompanion",
     "userInterfaceStyle": "dark",
     "plugins": [
       "expo-router",
       "expo-video",
-      "expo-font"
+      "expo-font",
+      "@bacons/apple-targets"
     ],
     "ios": {
       "supportsTablet": false,
@@ -32,7 +34,10 @@
       }
     },
     "updates": {
-      "url": "https://u.expo.dev/a5618df7-594b-46ff-9722-cdb68202dee3"
+      "url": "https://u.expo.dev/a5618df7-594b-46ff-9722-cdb68202dee3",
+      "requestHeaders": {
+        "expo-channel-name": "production"
+      }
     }
   }
 }

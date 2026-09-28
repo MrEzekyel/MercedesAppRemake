@@ -20,3 +20,10 @@ app-mobile/src/config.ts
 
 # OS
 .DS_Store
+
+# Expo prebuild (CNG): ios/ e android/ si rigenerano
+app-mobile/ios/
+app-mobile/android/
+# Indirizzo e token del backend per i widget, generato da src/config.ts
+app-mobile/targets/widget/Config.generated.swift
+app-mobile/targets/widget/Assets.xcassets/

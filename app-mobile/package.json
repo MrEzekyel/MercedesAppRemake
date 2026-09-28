@@ -8,6 +8,7 @@
     "android": "expo start --android"
   },
   "dependencies": {
+    "@bacons/apple-targets": "^5.0.0",
     "@expo/vector-icons": "^15.0.2",
     "expo": "^57.0.0",
     "expo-asset": "~57.0.18",

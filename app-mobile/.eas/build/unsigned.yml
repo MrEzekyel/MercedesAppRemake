@@ -1,0 +1,33 @@
+# App per iPhone senza firma: la firma la mette Sideloadly con l'Apple ID
+# gratuito al momento dell'installazione (vedi docs/installazione-iphone.md).
+build:
+  name: iPhone senza firma
+  steps:
+    - eas/checkout
+    - eas/install_node_modules
+    - eas/prebuild
+    - run:
+        name: Pod install
+        working_directory: ios
+        command: pod install
+    - run:
+        name: Compila senza firma
+        working_directory: ios
+        command: |
+          set -eo pipefail
+          xcodebuild -version
+          xcodebuild -workspace MBCompanion.xcworkspace -scheme MBCompanion -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            -archivePath build/MBCompanion.xcarchive \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            archive > build.log 2>&1 || { grep -E "error:" build.log | head -60; tail -120 build.log; exit 1; }
+          tail -3 build.log
+          rm -rf Payload MBCompanion.ipa
+          mkdir Payload
+          cp -R build/MBCompanion.xcarchive/Products/Applications/MBCompanion.app Payload/
+          ls Payload/MBCompanion.app/PlugIns
+          zip -qry MBCompanion.ipa Payload
+    - eas/upload_artifact:
+        name: Carica IPA
+        inputs:
+          path: ios/MBCompanion.ipa
