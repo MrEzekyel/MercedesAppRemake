@@ -1,26 +1,43 @@
 # Installare MB Companion sull'iPhone (Apple ID gratuito)
 
-L'app si compila nel cloud di Expo **senza firma**. La firma la mette Sideloadly
-al momento dell'installazione, con il tuo Apple ID gratuito. Con un account
-gratuito Apple fa scadere la firma dopo **7 giorni**: dopo va reinstallata (i
-dati restano).
+L'app si compila nel cloud di Expo **senza firma** (profilo EAS `unsigned`).
+La firma la mette questo Mac con Xcode 26.3 e il tuo Apple ID gratuito. Con un
+account gratuito Apple fa scadere la firma dopo **7 giorni**: poi si rilancia
+lo script e i dati restano.
 
-## Prima installazione
+Sideloadly è stato scartato: su questo Mac il login fallisce sempre con
+"Guru Meditation … Invalid file".
 
-1. Scarica Sideloadly per macOS da <https://sideloadly.io> e installalo.
-2. Collega l'iPhone al Mac con il cavo. Sbloccalo e rispondi "Autorizza" alla
-   domanda "Vuoi autorizzare questo computer?".
-3. Apri Sideloadly e trascina `MBCompanion.ipa` nel riquadro dell'app.
-4. In "Apple Account" scrivi la mail del tuo Apple ID e premi **Start**. Ti
-   chiede la password dell'Apple ID ed eventualmente il codice di verifica a
-   due fattori. Sideloadly la usa solo per chiedere ad Apple il certificato
-   gratuito.
-5. Sull'iPhone:
-   - vai in **Impostazioni › Privacy e sicurezza › Modalità sviluppatore**,
-     attivala e riavvia il telefono quando lo chiede;
-   - vai in **Impostazioni › Generali › VPN e gestione dispositivi**, tocca il
-     tuo Apple ID e poi **Autorizza**.
-6. Apri MB Companion una volta.
+## Cosa serve (già fatto una volta)
+
+- **Xcode 26.3** in `/Applications/Xcode-26.3.app` (versione Universal, perché
+  il Mac è Intel), con il componente iOS installato e il tuo Apple ID in
+  **Impostazioni › Accounts**. Il team gratuito è `J8S23W7H6M`.
+- **Il progetto di supporto** in `~/Library/Application Support/MBCompanion/firma`.
+  Ha gli stessi identificativi dell'app e del widget, ma non contiene React
+  Native. Serve solo perché Xcode crei i profili di firma gratuiti.
+- **Sull'iPhone:**
+  - Modalità sviluppatore attiva (**Impostazioni › Privacy e sicurezza**);
+  - certificato autorizzato in **Impostazioni › Generali › VPN e gestione
+    dispositivi › Apple Development › Autorizza**.
+
+## Ogni 7 giorni
+
+Collega e sblocca l'iPhone, poi dalla cartella del repository:
+
+```sh
+app-mobile/scripts/installa-iphone.sh
+```
+
+Lo script:
+1. rinnova i profili se stanno per scadere;
+2. firma app e widget;
+3. installa sull'iPhone;
+4. stampa la nuova scadenza.
+
+Se non riesce a rinnovare i profili, apri
+`~/Library/Application Support/MBCompanion/firma/ios/MBCompanion.xcodeproj` in
+Xcode 26.3, premi Play una volta e rilancia lo script.
 
 ## Widget e controllo
 
@@ -37,16 +54,8 @@ manda il comando opposto. Se il telefono è bloccato chiede prima il Face ID,
 sia per aprire sia per chiudere: iOS non permette di chiederlo solo per una
 delle due azioni.
 
-Il widget si aggiorna da solo circa ogni 15 minuti, a discrezione di iOS. L'ora
-in basso è quella dell'ultimo dato ricevuto dall'auto.
-
-## Ogni 7 giorni
-
-Collega l'iPhone e trascina di nuovo lo stesso `MBCompanion.ipa` in
-Sideloadly, poi premi **Start**. L'app viene aggiornata senza perdere i dati.
-
-Sideloadly ha anche un'opzione di rinnovo automatico via Wi-Fi. Richiede che il
-Mac sia acceso e sulla stessa rete dell'iPhone.
+Il widget si aggiorna da solo circa ogni 15 minuti, a discrezione di iOS.
+L'ora in basso è quella dell'ultimo dato ricevuto dall'auto.
 
 ## Aggiornamenti
 
@@ -58,12 +67,20 @@ Mac sia acceso e sulla stessa rete dell'iPhone.
   ```
 
 - **Modifiche native** (widget, nuove librerie native) richiedono una nuova
-  build e una reinstallazione con Sideloadly:
+  build:
 
   ```sh
   cd app-mobile && EAS_NO_VCS=1 npx eas-cli build --platform ios --profile unsigned
   ```
 
+  Scarica l'IPA dalla pagina della build, poi passala allo script:
+
+  ```sh
+  app-mobile/scripts/installa-iphone.sh ~/Downloads/xxxx.ipa
+  ```
+
+  Lo script la conserva e dalle volte successive la usa senza argomento.
+
   `EAS_NO_VCS=1` serve perché `src/config.ts` (indirizzo e token del backend) è
   fuori da git ma deve arrivare nella build. Le regole di cosa caricare sono in
-  `.easignore` nella radice del repository.
+  `.easignore`, nella radice del repository.
