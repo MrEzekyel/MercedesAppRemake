@@ -1,5 +1,5 @@
-# App per iPhone senza firma: la firma la mette Sideloadly con l'Apple ID
-# gratuito al momento dell'installazione (vedi docs/installazione-iphone.md).
+# App per iPhone senza firma: la firma la mette app-mobile/scripts/installa-iphone.sh
+# con l'Apple ID gratuito al momento dell'installazione (vedi docs/installazione-iphone.md).
 build:
   name: iPhone senza firma
   steps:
