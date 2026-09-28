@@ -58,7 +58,7 @@ function RefuelRow({ refuel }: { refuel: Refuel }) {
 
   return (
     <Pressable
-      onPress={() => pending && router.push(`/refuel/${refuel.id}`)}
+      onPress={() => router.push(`/refuel/${refuel.id}`)}
       style={({ pressed }) => [
         styles.row,
         pending && styles.rowPending,

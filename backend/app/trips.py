@@ -7,7 +7,9 @@ accensione, e il percorso ricostruito campionando la posizione durante la marcia
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
 from math import asin, cos, radians, sin, sqrt
@@ -56,8 +58,12 @@ class _Closed:
 
 
 class TripRecorder:
-    def __init__(self, db: Database) -> None:
+    def __init__(self, db: Database, on_closed: Callable[[UUID], Awaitable[object]] | None = None) -> None:
         self._db = db
+        # Lavoro da fare a viaggio chiuso (aggancio alle strade), in
+        # background: la ricezione degli eventi non deve aspettare la rete.
+        self._on_closed = on_closed
+        self._background: set[asyncio.Task] = set()
         # Ultimo valore noto di ogni contatore, per veicolo.
         self._counters: dict[str, dict[str, float]] = {}
         self._levels: dict[str, dict[str, float]] = {}
@@ -117,6 +123,16 @@ class TripRecorder:
         )
         self._recent_closed[vin] = _Closed(trip["id"], ts, duration_s, baseline)
         LOGGER.info("Viaggio chiuso per %s (%s km)", _mask(vin), distance)
+        if self._on_closed is not None:
+            task = asyncio.create_task(self._run_on_closed(trip["id"]))
+            self._background.add(task)
+            task.add_done_callback(self._background.discard)
+
+    async def _run_on_closed(self, trip_id: UUID) -> None:
+        try:
+            await self._on_closed(trip_id)  # type: ignore[misc]
+        except Exception:
+            LOGGER.exception("Lavoro a fine viaggio non riuscito")
 
     async def _update_recently_closed(self, vin: str, ts: datetime) -> None:
         closed = self._recent_closed.get(vin)

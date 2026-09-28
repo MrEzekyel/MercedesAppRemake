@@ -96,6 +96,9 @@ CREATE TABLE trip (
     -- Traccia completa, materializzata alla chiusura del viaggio a partire
     -- da trip_point. Evita di ricostruire la linea a ogni apertura della mappa.
     route           geography(LineString, 4326),
+    -- Lo stesso percorso agganciato alle strade (backend/app/mapmatch.py):
+    -- i punti dell'auto sono radi, collegati dritti tagliano case e campi.
+    route_matched   geography(LineString, 4326),
 
     -- Livello e autonomia all'accensione e allo spegnimento: il "prima e
     -- dopo" dell'auto nel dettaglio del viaggio.

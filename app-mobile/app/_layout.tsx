@@ -61,7 +61,7 @@ export default function RootLayout() {
           <Stack.Screen name="place/[id]" options={{ headerShown: false, presentation: "modal" }} />
           <Stack.Screen
             name="refuel/[id]"
-            options={{ title: "Conferma rifornimento", presentation: "modal" }}
+            options={{ title: "Rifornimento", presentation: "modal" }}
           />
         </Stack>
       </CarTransitionProvider>

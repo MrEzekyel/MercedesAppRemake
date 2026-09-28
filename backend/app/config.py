@@ -34,6 +34,15 @@ class Settings(BaseSettings):
 
     token_path: Path = BASE_DIR / "data" / "token.json"
 
+    # Aggancio dei percorsi alle strade (vedi app/mapmatch.py). Di serie il
+    # server pubblico di OSRM (riceve i punti GPS dei viaggi); si puo'
+    # puntare a un OSRM installato in proprio o spegnere del tutto.
+    osrm_url: str = "https://router.project-osrm.org"
+    # Punti per richiesta: il server pubblico ne accetta 10; un OSRM proprio
+    # di serie 100.
+    osrm_max_points: int = 10
+    map_matching: bool = True
+
     # Soglia oltre la quale un silenzio dall'auto viene segnalato nei log
     # (vedi MercedesService._warn_if_silent). 30 min: sotto e' normale per
     # un'auto ferma, sopra puo' voler dire un viaggio perso per un calo

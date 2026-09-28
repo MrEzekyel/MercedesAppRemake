@@ -29,6 +29,7 @@ from .mbapi.oauth import Oauth
 from .mbapi.proto import client_pb2
 from .mbapi.websocket import Websocket
 from .refuel import RefuelDetector
+from .mapmatch import RouteMatcher
 from .trips import TripRecorder
 
 # Stati terminali di AppTwinCommandStatus.state (vehicle_events.proto):
@@ -62,7 +63,8 @@ _UNLOCKED_STATES = {0, 3}
 class MercedesService:
     def __init__(self, db: Database) -> None:
         self._db = db
-        self._trips = TripRecorder(db)
+        self._matcher = RouteMatcher(db)
+        self._trips = TripRecorder(db, on_closed=self._matcher.match_trip)
         self._refuel = RefuelDetector(db)
         self._hass = HomeAssistant()
         self._ignition_states: dict[str, bool] = {}
@@ -120,6 +122,7 @@ class MercedesService:
             self._silence_watchdog.cancel()
         if self._websocket:
             await self._websocket.async_stop()
+        await self._matcher.close()
 
     async def _warn_if_silent(self) -> None:
         """Segnala nei log quando non arrivano eventi da un po'.

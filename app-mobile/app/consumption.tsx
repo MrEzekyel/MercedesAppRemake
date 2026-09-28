@@ -202,7 +202,7 @@ export default function ConsumiScreen() {
             return (
               <Pressable
                 key={r.refuel.id}
-                onPress={() => router.push(pending ? `/refuel/${r.refuel.id}` : "/refuels")}
+                onPress={() => router.push(`/refuel/${r.refuel.id}`)}
                 style={({ pressed }) => [styles.refuel, i > 0 && styles.refuelLine, pressed && styles.pressed]}
               >
                 <View style={styles.refuelDate}>

@@ -281,7 +281,9 @@ class Database:
         # Tracciato semplificato: all'elenco serve la forma del percorso per
         # l'anteprima, non la precisione al metro. ~50 m di tolleranza riduce
         # di molto i punti trasmessi. Le statistiche non lo chiedono affatto.
-        route = "ST_AsGeoJSON(ST_Simplify(t.route::geometry, 0.0005))" if with_route else "NULL"
+        # Il percorso agganciato alle strade, quando c'e', al posto della
+        # linea fra i punti GPS.
+        route = "ST_AsGeoJSON(ST_Simplify(COALESCE(t.route_matched, t.route)::geometry, 0.0001))" if with_route else "NULL"
         rows = await self.pool.fetch(
             f"""
             SELECT {_TRIP_COLUMNS}, {route} AS route_geojson
@@ -300,7 +302,8 @@ class Database:
         row = await self.pool.fetchrow(
             f"""
             SELECT {_TRIP_COLUMNS}, t.distance_km, t.distance_gps_km,
-                   ST_AsGeoJSON(t.route::geometry) AS route_geojson
+                   ST_AsGeoJSON(COALESCE(t.route_matched, t.route)::geometry) AS route_geojson,
+                   t.route_matched IS NOT NULL AS route_is_matched
             FROM trip_stats t {_TRIP_PLACES}
             WHERE t.id = $1
             """,
@@ -320,6 +323,46 @@ class Database:
             if result.endswith(" 0"):
                 return None
         return await self.get_trip(trip_id)
+
+    # -- aggancio alle strade ------------------------------------------------
+
+    async def trip_points(self, trip_id: UUID) -> list[tuple[datetime, float, float]]:
+        rows = await self.pool.fetch(
+            """
+            SELECT recorded_at, ST_Y(position::geometry) AS lat, ST_X(position::geometry) AS lon
+            FROM trip_point WHERE trip_id = $1 ORDER BY recorded_at
+            """,
+            trip_id,
+        )
+        return [(r["recorded_at"], r["lat"], r["lon"]) for r in rows]
+
+    async def trip_expected_km(self, trip_id: UUID) -> float | None:
+        """Km del viaggio secondo l'auto (contatori o contachilometri)."""
+        value = await self.pool.fetchval(
+            """
+            SELECT COALESCE(distance_km, (odometer_end - odometer_start)::numeric)
+            FROM trip WHERE id = $1
+            """,
+            trip_id,
+        )
+        return float(value) if value is not None and value > 0 else None
+
+    async def set_route_matched(self, trip_id: UUID, coords: list[tuple[float, float]]) -> None:
+        line = "LINESTRING(" + ",".join(f"{lon} {lat}" for lon, lat in coords) + ")"
+        await self.pool.execute(
+            "UPDATE trip SET route_matched = ST_GeogFromText($2) WHERE id = $1", trip_id, line
+        )
+
+    async def trips_to_match(self, redo_all: bool) -> list[UUID]:
+        rows = await self.pool.fetch(
+            """
+            SELECT id FROM trip
+            WHERE ended_at IS NOT NULL AND ($1 OR route_matched IS NULL)
+            ORDER BY started_at DESC
+            """,
+            redo_all,
+        )
+        return [r["id"] for r in rows]
 
     # -- luoghi -------------------------------------------------------------
 
