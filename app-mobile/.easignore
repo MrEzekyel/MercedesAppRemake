@@ -1,8 +1,0 @@
-# Si carica con EAS_NO_VCS=1 perche' src/config.ts (gitignored) serve alla
-# build: qui si esclude solo quello che si rigenera.
-node_modules/
-ios/
-android/
-dist/
-.expo/
-targets/widget/Assets.xcassets/

@@ -1,0 +1,21 @@
+# Cosa caricare su EAS Build. Si usa con EAS_NO_VCS=1 perche'
+# app-mobile/src/config.ts (indirizzo e token del backend) e' fuori da git ma
+# serve alla build dell'app e dei widget. Il backend non serve alla build e
+# contiene segreti: resta fuori tutto.
+.git/
+.DS_Store
+.env
+.env.*
+backend/
+db/
+docker-compose.yml
+docs/
+**/node_modules/
+**/__pycache__/
+app-mobile/.expo/
+app-mobile/ios/
+app-mobile/android/
+app-mobile/dist/
+app-mobile/web-build/
+app-mobile/targets/widget/Assets.xcassets/
+app-mobile/targets/widget/Config.generated.swift

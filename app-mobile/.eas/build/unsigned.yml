@@ -4,12 +4,19 @@ build:
   name: iPhone senza firma
   steps:
     - eas/checkout
+    - run:
+        name: Controlla la configurazione del backend
+        command: |
+          # Senza src/config.ts app e widget puntano a localhost: meglio fallire qui.
+          grep -q 'API_BASE_URL = "https' src/config.ts
     - eas/install_node_modules
     - eas/prebuild
     - run:
         name: Pod install
         working_directory: ios
-        command: pod install
+        command: |
+          grep -q 'baseURL = "https' ../targets/widget/Config.generated.swift
+          pod install
     - run:
         name: Compila senza firma
         working_directory: ios
@@ -27,7 +34,10 @@ build:
           cp -R build/MBCompanion.xcarchive/Products/Applications/MBCompanion.app Payload/
           ls Payload/MBCompanion.app/PlugIns
           zip -qry MBCompanion.ipa Payload
+          # eas/upload_artifact risolve i percorsi dalla radice del caricamento
+          # (la cartella sopra app-mobile), non da working_directory.
+          ls -la "$PWD/MBCompanion.ipa"
     - eas/upload_artifact:
         name: Carica IPA
         inputs:
-          path: ios/MBCompanion.ipa
+          path: /Users/expo/workingdir/build/app-mobile/ios/MBCompanion.ipa

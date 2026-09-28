@@ -66,4 +66,4 @@ Mac sia acceso e sulla stessa rete dell'iPhone.
 
   `EAS_NO_VCS=1` serve perché `src/config.ts` (indirizzo e token del backend) è
   fuori da git ma deve arrivare nella build. Le regole di cosa caricare sono in
-  `app-mobile/.easignore`.
+  `.easignore` nella radice del repository.
