@@ -5,11 +5,16 @@
  *
  * Niente push remote: con l'Apple ID gratuito non si possono usare.
  *
- * require protetto: una build installata prima di expo-notifications non
- * ha il modulo nativo, e un aggiornamento EAS che lo importasse la farebbe
- * chiudere all'avvio.
+ * Una build installata prima di expo-notifications non ha il modulo nativo,
+ * e un aggiornamento EAS che caricasse la libreria la farebbe chiudere: un
+ * try/catch attorno al require non basta, perche' Metro segnala come fatale
+ * l'errore di un modulo caricato fuori dall'avvio. Si controlla prima che
+ * il modulo nativo ci sia.
  */
+import { requireOptionalNativeModule } from "expo-modules-core";
+
 export function setUpNotifications(): void {
+  if (!requireOptionalNativeModule("ExpoPushTokenManager")) return;
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const Notifications: typeof import("expo-notifications") = require("expo-notifications");
