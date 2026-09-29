@@ -1,12 +1,9 @@
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
-import { AppState } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { CarTransitionProvider } from "../src/components/CarTransition";
 import { LaunchSplash } from "../src/components/LaunchSplash";
-import { handleWake } from "../src/keyless/engine";
-import { keylessAvailable } from "../src/keyless/tasks";
 import { setUpNotifications } from "../src/notifications";
 import { colors } from "../src/theme";
 
@@ -24,17 +21,6 @@ const SUBPAGE = { headerShown: false, animation: "fade", animationDuration: 220 
 
 export default function RootLayout() {
   useEffect(setUpNotifications, []);
-
-  // Ogni volta che l'app torna in primo piano il keyless ricontrolla dove
-  // sta l'auto: se e' stata spostata, la zona da sorvegliare si aggiorna.
-  useEffect(() => {
-    if (!keylessAvailable) return;
-    handleWake({ kind: "app" });
-    const sub = AppState.addEventListener("change", (next) => {
-      if (next === "active") handleWake({ kind: "app" });
-    });
-    return () => sub.remove();
-  }, []);
 
   return (
     <SafeAreaProvider>
