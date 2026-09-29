@@ -1,5 +1,6 @@
 import AppIntents
 import SwiftUI
+import UserNotifications
 import WidgetKit
 
 /// Chiude o apre l'auto da schermata di blocco e Centro di Controllo.
@@ -46,10 +47,45 @@ struct SetCarLockedIntent: SetValueIntent {
   init() {}
 
   func perform() async throws -> some IntentResult {
-    let state = try await MBApi.state()
-    try await MBApi.setLocked(value, vin: state.vin)
-    PendingLock.set(value)
-    WidgetCenter.shared.reloadTimelines(ofKind: StatusWidget.kind)
+    do {
+      let state = try await MBApi.state()
+      let confirmed = try await MBApi.setLocked(value, vin: state.vin)
+      PendingLock.set(value)
+      WidgetCenter.shared.reloadTimelines(ofKind: StatusWidget.kind)
+      await LockNotice.post(value ? (confirmed ? .locked : .lockSent) : (confirmed ? .unlocked : .unlockSent))
+    } catch {
+      await LockNotice.post(.failed(locking: value, reason: (error as? ApiError)?.message ?? "Backend non raggiungibile"))
+      throw error
+    }
     return .result()
+  }
+}
+
+/// Esito del comando come notifica: dalla schermata di blocco il controllo
+/// cambia solo icona, e un errore passerebbe inosservato. Sempre lo stesso
+/// identificativo: la notifica nuova sostituisce la precedente invece di
+/// accumularsi. Il permesso lo chiede l'app al primo avvio.
+enum LockNotice {
+  case locked, unlocked, lockSent, unlockSent
+  case failed(locking: Bool, reason: String)
+
+  private var text: (title: String, body: String) {
+    switch self {
+    case .locked: ("Classe A chiusa", "L'auto ha confermato la chiusura.")
+    case .unlocked: ("Classe A aperta", "L'auto ha confermato l'apertura.")
+    case .lockSent: ("Chiusura inviata", "L'auto non ha ancora confermato: controlla tra poco.")
+    case .unlockSent: ("Apertura inviata", "L'auto non ha ancora confermato: controlla tra poco.")
+    case .failed(let locking, let reason): (locking ? "Chiusura non riuscita" : "Apertura non riuscita", reason)
+    }
+  }
+
+  static func post(_ notice: LockNotice) async {
+    let content = UNMutableNotificationContent()
+    content.title = notice.text.title
+    content.body = notice.text.body
+    content.sound = .default
+    content.threadIdentifier = "lock"
+    let request = UNNotificationRequest(identifier: "lock-result", content: content, trigger: nil)
+    try? await UNUserNotificationCenter.current().add(request)
   }
 }

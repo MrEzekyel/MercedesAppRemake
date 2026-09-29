@@ -1,8 +1,10 @@
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { useEffect } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { CarTransitionProvider } from "../src/components/CarTransition";
 import { LaunchSplash } from "../src/components/LaunchSplash";
+import { setUpNotifications } from "../src/notifications";
 import { colors } from "../src/theme";
 
 /**
@@ -18,6 +20,8 @@ import { colors } from "../src/theme";
 const SUBPAGE = { headerShown: false, animation: "fade", animationDuration: 220 } as const;
 
 export default function RootLayout() {
+  useEffect(setUpNotifications, []);
+
   return (
     <SafeAreaProvider>
       <CarTransitionProvider>

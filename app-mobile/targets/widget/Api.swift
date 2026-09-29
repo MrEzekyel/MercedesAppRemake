@@ -72,8 +72,10 @@ enum MBApi {
   }
 
   /// Chiude o apre e aspetta la conferma dell'auto (al massimo ~24 s: le
-  /// azioni dei controlli hanno poco tempo per finire).
-  static func setLocked(_ locked: Bool, vin: String) async throws {
+  /// azioni dei controlli hanno poco tempo per finire). false: il comando
+  /// e' partito ma l'auto non ha ancora risposto.
+  @discardableResult
+  static func setLocked(_ locked: Bool, vin: String) async throws -> Bool {
     let path = "/api/vehicles/\(vin)/\(locked ? "lock" : "unlock")"
     let accepted = try decoder.decode(CommandAccepted.self, from: try await request(path, method: "POST"))
     for _ in 0..<12 {
@@ -81,13 +83,12 @@ enum MBApi {
       guard let data = try? await request("/api/commands/\(accepted.commandId)"),
             let status = try? decoder.decode(CommandStatus.self, from: data)
       else { continue }
-      if status.status == "completed" { return }
+      if status.status == "completed" { return true }
       if status.status == "failed" {
         throw ApiError(message: status.error ?? "L'auto ha rifiutato il comando")
       }
     }
-    // Nessuna conferma in tempo: il comando e' partito, l'esito arrivera'
-    // con il prossimo aggiornamento dello stato.
+    return false
   }
 }
 

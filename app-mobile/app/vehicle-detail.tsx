@@ -2,7 +2,7 @@ import { BlurView } from "expo-blur";
 import { router, useFocusEffect } from "expo-router";
 import type { ComponentType } from "react";
 import { useCallback, useEffect, useState } from "react";
-import { Animated, ImageBackground, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Animated, ImageBackground, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, ApiError, type CommandResult } from "../src/api";
 import { AppHeader } from "../src/components/AppHeader";
@@ -90,8 +90,37 @@ export default function VehicleDetailScreen() {
     [pending, state?.vin, load]
   );
 
+  // L'auto chiude i finestrini da remoto solo se e' chiusa a chiave: con le
+  // porte aperte il comando verrebbe rifiutato dopo mezzo minuto di attesa.
+  // Lo stato si rilegge dal server, quello a schermo puo' essere vecchio.
+  const closeWindows = useCallback(async () => {
+    if (pending || !state?.vin) return;
+    setPending("windows");
+    let fresh: VehicleState | undefined;
+    try {
+      fresh = (await api.getState(state.vin))[0];
+    } catch {
+      fresh = state;
+    }
+    setPending(null);
+    if (fresh?.doors_locked) {
+      runCommand("windows", api.windowsClose);
+      return;
+    }
+    Alert.alert(
+      "Prima chiudi l'auto",
+      "I finestrini si chiudono da remoto solo con l'auto chiusa a chiave. Chiudi l'auto e poi riprova.",
+      [
+        { text: "Annulla", style: "cancel" },
+        { text: "Chiudi l'auto", onPress: () => runCommand("toggleLock", api.lock) },
+      ]
+    );
+  }, [pending, state, runCommand]);
+
   const locked = state?.doors_locked;
-  const windowsOpen = state?.openings?.windows_overall === "open";
+  // Anche socchiusi (aerazione, parziale) vanno chiusi, non aperti.
+  const windowsStatus = state?.openings?.windows_overall;
+  const windowsOpen = windowsStatus !== undefined && windowsStatus !== "closed";
   const tankCapacity = state?.tank_capacity_l;
   const fuelUsedPct =
     lastTrip?.fuel_used_l != null && tankCapacity ? (lastTrip.fuel_used_l / tankCapacity) * 100 : null;
@@ -151,9 +180,7 @@ export default function VehicleDetailScreen() {
                   label={windowsOpen ? "Chiudi" : "Apri"}
                   caption="finestrini"
                   pending={pending === "windows"}
-                  onPress={() =>
-                    runCommand("windows", windowsOpen ? api.windowsClose : api.windowsOpen)
-                  }
+                  onPress={() => (windowsOpen ? closeWindows() : runCommand("windows", api.windowsOpen))}
                 />
                 <CommandButton
                   Icon={LightIcon}
