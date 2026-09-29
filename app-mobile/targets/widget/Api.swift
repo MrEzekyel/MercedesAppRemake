@@ -54,11 +54,31 @@ enum MBApi {
     req.httpMethod = method
     req.setValue("Bearer \(Secrets.token)", forHTTPHeaderField: "Authorization")
     req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    let (data, response) = try await URLSession.shared.data(for: req)
+    let (data, response) = try await send(req)
     guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
       throw ApiError(message: "Backend non raggiungibile")
     }
     return data
+  }
+
+  /// Il processo del widget resta vivo tra un tocco e l'altro e riusa le
+  /// connessioni gia' aperte: sulla rete cellulare quella vecchia puo' essere
+  /// morta, e la richiesta fallisce in pochi millisecondi (connessione persa,
+  /// o annullata da CFNetwork). Si riprova su una connessione nuova: chiudere
+  /// o aprire due volte l'auto ha lo stesso effetto di una.
+  private static func send(_ req: URLRequest) async throws -> (Data, URLResponse) {
+    let transient: Set<URLError.Code> = [.networkConnectionLost, .cancelled, .secureConnectionFailed]
+    var attempt = 0
+    while true {
+      do {
+        return try await URLSession.shared.data(for: req)
+      } catch let error as URLError where transient.contains(error.code) && attempt < 2 && !Task.isCancelled {
+        attempt += 1
+        try await Task.sleep(for: .milliseconds(300))
+      } catch let error as URLError {
+        throw ApiError(message: error.code == .notConnectedToInternet ? "Telefono senza connessione" : "Backend non raggiungibile")
+      }
+    }
   }
 
   static func state() async throws -> VehicleState {
