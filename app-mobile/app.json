@@ -19,6 +19,16 @@
           "image": "./assets/splash-logo.png",
           "imageWidth": 200
         }
+      ],
+      [
+        "expo-location",
+        {
+          "isIosBackgroundLocationEnabled": true,
+          "locationWhenInUsePermission": "Classe A usa la posizione per mostrarti dove sei rispetto all'auto.",
+          "locationAlwaysAndWhenInUsePermission": "Con il Keyless attivo, Classe A usa la posizione anche ad app chiusa per chiudere l'auto quando ti allontani e avvisarti quando torni.",
+          "locationAlwaysPermission": "Con il Keyless attivo, Classe A usa la posizione anche ad app chiusa per chiudere l'auto quando ti allontani e avvisarti quando torni.",
+          "motionUsagePermission": false
+        }
       ]
     ],
     "ios": {

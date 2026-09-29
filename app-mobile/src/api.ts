@@ -144,6 +144,27 @@ export const api = {
   getCommand: (id: string): Promise<CommandStatus> => request(`/api/commands/${id}`),
 };
 
+/**
+ * Manda un comando e aspetta la risposta dell'auto. "sent": partito ma
+ * senza conferma entro il tempo dato. Un rifiuto dell'auto diventa ApiError
+ * col motivo.
+ */
+export async function runCommand(
+  vin: string,
+  action: (vin: string) => Promise<CommandResult>,
+  timeoutMs = 24000
+): Promise<"confirmed" | "sent"> {
+  const { command_id } = await action(vin);
+  const until = Date.now() + timeoutMs;
+  while (Date.now() < until) {
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    const status = await api.getCommand(command_id).catch(() => null);
+    if (status?.status === "completed") return "confirmed";
+    if (status?.status === "failed") throw new ApiError(0, status.error ?? "Comando rifiutato dall'auto");
+  }
+  return "sent";
+}
+
 export interface PlaceInput {
   name: string;
   icon: PlaceIcon;

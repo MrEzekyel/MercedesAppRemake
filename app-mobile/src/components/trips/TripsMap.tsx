@@ -9,6 +9,7 @@ import { useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import MapView, { Circle, Marker, Polyline, type Region } from "react-native-maps";
 import { colors, radius, spacing } from "../../theme";
+import { distanceM } from "../../geo";
 import { PLACE_ICON_PATHS } from "../../trips/places";
 import type { Place, TripSummary, VehicleState } from "../../types";
 import { PathIcon } from "../icons";
@@ -124,15 +125,6 @@ function CarThumb({ heading, small }: { heading: number; small?: boolean }) {
       />
     </View>
   );
-}
-
-export function distanceM(a: { latitude: number; longitude: number }, lat: number, lon: number): number {
-  const dLat = ((lat - a.latitude) * Math.PI) / 180;
-  const dLon = ((lon - a.longitude) * Math.PI) / 180;
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((a.latitude * Math.PI) / 180) * Math.cos((lat * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
-  return 2 * 6371000 * Math.asin(Math.sqrt(h));
 }
 
 function fit(points: { latitude: number; longitude: number }[]): Region {

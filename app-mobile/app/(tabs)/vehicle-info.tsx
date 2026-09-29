@@ -16,6 +16,7 @@ import {
 import { api, ApiError } from "../../src/api";
 import { AppHeader } from "../../src/components/AppHeader";
 import { useCarTransition } from "../../src/components/CarTransition";
+import { KeylessToggle } from "../../src/components/KeylessToggle";
 import {
   AlertIcon,
   BrakeIcon,
@@ -321,6 +322,8 @@ export default function InfoVeicoloScreen() {
             value={ignitionLabel(state?.ignition_state, state?.engine_running)}
           />
           <InfoRow Icon={CheckIcon} label="Telaio (VIN)" value={state?.vin ?? "—"} mono />
+
+          <KeylessToggle />
 
           <Pressable
             onPress={() => router.push("/refuels")}
