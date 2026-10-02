@@ -5,6 +5,7 @@ import { Bars, HBars } from "../../src/components/trips/charts";
 import { CONTENT_W, SubPage } from "../../src/components/trips/SubPage";
 import { TripRow } from "../../src/components/trips/TripRow";
 import { TripsMap } from "../../src/components/trips/TripsMap";
+import { tripCost } from "../../src/fuel";
 import {
   Dot, EmptyNote, Eyebrow, HAIRLINE_SOFT, PeriodPicker, PlaceGlyph, SectionHeader, SmallPill, StatGrid,
 } from "../../src/components/trips/ui";
@@ -155,7 +156,7 @@ export default function PlaceDetailScreen() {
                 trip={t}
                 from={endpoint(t, "start", basics.placeMap, addresses)}
                 to={endpoint(t, "end", basics.placeMap, addresses)}
-                cost={price != null && t.fuel_used_l != null ? t.fuel_used_l * price : null}
+                cost={tripCost(t, price)}
                 onPress={() => router.push(`/trip/${t.id}`)}
               />
             </View>

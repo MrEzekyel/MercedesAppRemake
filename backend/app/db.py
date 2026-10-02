@@ -10,6 +10,8 @@ from uuid import UUID
 
 import asyncpg
 
+from .fuel_cost import RefuelLot, TripCost, TripFuel, fifo_costs
+
 
 class Database:
     def __init__(self, dsn: str) -> None:
@@ -296,7 +298,7 @@ class Database:
             """,
             vin, limit, offset, since, until,
         )
-        return [_trip_from_row(r) for r in rows]
+        return await self._with_fuel_costs([_trip_from_row(r) for r in rows])
 
     async def get_trip(self, trip_id: UUID) -> dict[str, Any] | None:
         row = await self.pool.fetchrow(
@@ -309,7 +311,62 @@ class Database:
             """,
             trip_id,
         )
-        return _trip_from_row(row) if row else None
+        if row is None:
+            return None
+        return (await self._with_fuel_costs([_trip_from_row(row)]))[0]
+
+    async def _with_fuel_costs(self, trips: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Aggiunge a ogni viaggio cost_eur e cost_uncovered_l (vedi fuel_cost.py).
+
+        Il FIFO va ripercorso dall'inizio della storia anche per mostrare una
+        sola pagina di viaggi: il costo di un viaggio dipende da tutti i
+        rifornimenti e i consumi che lo precedono.
+        """
+        costs: dict[Any, TripCost] = {}
+        for vin in {t["vin"] for t in trips}:
+            costs.update(await self._fuel_costs_for(vin))
+        for trip in trips:
+            cost = costs.get(trip["id"])
+            trip["cost_eur"] = cost.cost_eur if cost else None
+            trip["cost_uncovered_l"] = cost.uncovered_l if cost else None
+        return trips
+
+    async def _fuel_costs_for(self, vin: str) -> dict[Any, TripCost]:
+        trip_rows = await self.pool.fetch(
+            """
+            SELECT id, ended_at, fuel_used_l FROM trip
+            WHERE vin = $1 AND ended_at IS NOT NULL AND fuel_used_l IS NOT NULL
+            """,
+            vin,
+        )
+        refuel_rows = await self.pool.fetch(
+            """
+            SELECT detected_at, status, liters, liters_estimated, price_per_liter,
+                   full_tank, fuel_level_before_pct, fuel_level_after_pct
+            FROM refuel_stats WHERE vin = $1
+            """,
+            vin,
+        )
+        capacity = await self.get_tank_capacity(vin)
+
+        refuels = []
+        for r in refuel_rows:
+            confirmed = r["status"] == "confirmed"
+            # Un rifornimento da confermare occupa gia' il suo posto nella
+            # coda con i litri stimati dall'auto, ma senza prezzo.
+            liters = r["liters"] if confirmed else r["liters_estimated"]
+            if liters is None:
+                continue
+            refuels.append(RefuelLot(
+                at=r["detected_at"],
+                liters=float(liters),
+                price_per_l=_float_or_none(r["price_per_liter"]) if confirmed else None,
+                full_tank=confirmed and r["full_tank"],
+                level_before_pct=_float_or_none(r["fuel_level_before_pct"]),
+                level_after_pct=_float_or_none(r["fuel_level_after_pct"]),
+            ))
+        trips = [TripFuel(r["id"], r["ended_at"], float(r["fuel_used_l"])) for r in trip_rows]
+        return fifo_costs(trips, refuels, capacity)
 
     async def update_trip(self, trip_id: UUID, fields: dict[str, Any]) -> dict[str, Any] | None:
         """Aggiorna i campi scelti dall'utente (etichetta, nota, indirizzi)."""
@@ -644,6 +701,10 @@ def _trip_from_row(row: asyncpg.Record) -> dict[str, Any]:
     raw = trip.pop("route_geojson", None)
     trip["route"] = json.loads(raw)["coordinates"] if raw else []
     return trip
+
+
+def _float_or_none(value: Any) -> float | None:
+    return float(value) if value is not None else None
 
 
 def _row_to_dict(row: asyncpg.Record) -> dict[str, Any]:

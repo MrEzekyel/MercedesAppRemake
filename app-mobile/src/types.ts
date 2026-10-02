@@ -61,6 +61,13 @@ export interface TripSummary {
   end_place_id: string | null;
   /** Tracciato semplificato per l'anteprima: [longitudine, latitudine]. Vuoto se chiesto senza. */
   route: [number, number][];
+  /**
+   * Costo FIFO dei litri di cui si conosce il rifornimento d'origine, e i
+   * litri rimasti senza prezzo (da prezzare in app). Null sui viaggi in
+   * corso; assenti con un backend precedente al FIFO. Usare tripCost().
+   */
+  cost_eur?: number | null;
+  cost_uncovered_l?: number | null;
 }
 
 export interface TripDetail extends TripSummary {

@@ -1,16 +1,34 @@
 /**
  * Quanto e' costato un viaggio.
  *
- * L'auto dice quanti litri ha bruciato, non quanto sono costati: il prezzo
- * al litro arriva da qui. In ordine di fiducia:
- *   1. il valore impostato a mano dall'utente (vince sempre);
+ * Il costo vero lo calcola il backend col metodo FIFO (backend/app/
+ * fuel_cost.py): ogni litro bruciato e' prezzato col rifornimento da cui
+ * proviene. Restano senza prezzo solo i litri di origine sconosciuta: il
+ * carburante gia' nel serbatoio al primo rifornimento registrato, o quello
+ * di un rifornimento non ancora confermato. Quelli, e solo quelli, si
+ * prezzano col prezzo di riserva, in ordine di fiducia:
+ *   1. il valore impostato a mano dall'utente;
  *   2. la media dei rifornimenti gia' confermati, pesata sui litri, cosi'
  *      un pieno da 40 l conta piu' di un rabbocco da 5;
  *   3. la media MIMIT della zona (vedi useFuelPrice.ts: e' un fallback
  *      asincrono, non sincrono come i primi due);
  *   4. niente, e allora il costo non si mostra invece di inventarlo.
  */
-import type { Refuel } from "./types";
+import type { Refuel, TripSummary } from "./types";
+
+/**
+ * Costo del viaggio: la parte FIFO piu' i litri senza prezzo al prezzo di
+ * riserva. null se servirebbe il prezzo di riserva e non c'e'.
+ */
+export function tripCost(t: TripSummary, fallbackPrice: number | null): number | null {
+  if (t.cost_eur == null) {
+    // Backend precedente al FIFO: tutto al prezzo di riserva, come prima.
+    return fallbackPrice != null && t.fuel_used_l != null ? t.fuel_used_l * fallbackPrice : null;
+  }
+  const uncovered = t.cost_uncovered_l ?? 0;
+  if (uncovered <= 0) return t.cost_eur;
+  return fallbackPrice != null ? t.cost_eur + uncovered * fallbackPrice : null;
+}
 
 export type PriceSource = "manuale" | "media" | "mimit" | "assente";
 

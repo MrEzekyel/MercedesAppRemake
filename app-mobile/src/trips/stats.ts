@@ -5,6 +5,7 @@
  * viaggi del periodo al backend e da qui ricavano totali, serie per il
  * grafico, luoghi, abitudini e record.
  */
+import { tripCost } from "../fuel";
 import type { Place, Refuel, TripSummary } from "../types";
 import type { Bucket } from "./period";
 
@@ -27,8 +28,10 @@ export const closedTrips = (trips: TripSummary[]) => trips.filter((t) => t.ended
 
 const kmOf = (t: TripSummary) => t.distance_effective_km ?? 0;
 
+/** price = prezzo di riserva per i litri senza prezzo FIFO (vedi tripCost). */
 export function totals(trips: TripSummary[], price: number | null): Totals {
   let km = 0, seconds = 0, liters = 0, kmWithFuel = 0;
+  let cost: number | null = 0;
   const closed = closedTrips(trips);
   for (const t of closed) {
     km += kmOf(t);
@@ -36,10 +39,14 @@ export function totals(trips: TripSummary[], price: number | null): Totals {
     if (t.fuel_used_l != null && t.distance_effective_km) {
       liters += t.fuel_used_l;
       kmWithFuel += t.distance_effective_km;
+      // Un solo viaggio senza costo rende il totale non affidabile: meglio
+      // non mostrarlo che mostrarne uno piu' basso del vero.
+      const c = tripCost(t, price);
+      cost = cost != null && c != null ? cost + c : null;
     }
   }
   const lPer100 = kmWithFuel > 0 && liters > 0 ? (liters / kmWithFuel) * 100 : null;
-  const cost = price != null && liters > 0 ? liters * price : null;
+  if (liters <= 0) cost = null;
   const costPerKm = cost != null && kmWithFuel > 0 ? cost / kmWithFuel : null;
   return { km, trips: closed.length, seconds, liters, kmWithFuel, lPer100, cost, costPerKm };
 }
@@ -59,7 +66,7 @@ export function metricOf(t: TripSummary, metric: Metric, price: number | null): 
     case "time":
       return (t.duration_s ?? 0) / 60;
     case "cost":
-      return price != null && t.fuel_used_l != null ? t.fuel_used_l * price : 0;
+      return tripCost(t, price) ?? 0;
   }
 }
 

@@ -263,8 +263,10 @@ function spendByMonth(rows: ReturnType<typeof refuelRows>) {
 }
 
 /**
- * Il prezzo al litro usato per tutti i costi. Automatico (media dei tuoi
- * rifornimenti, o dei distributori della zona) finche' non lo imposti tu.
+ * Prezzo di riserva: i costi dei viaggi vengono dai rifornimenti (FIFO, vedi
+ * src/fuel.ts), questo prezza solo i litri di cui non si conosce il
+ * rifornimento d'origine. Automatico (media dei tuoi rifornimenti, o dei
+ * distributori della zona) finche' non lo imposti tu.
  */
 function PriceEditor({ basics }: { basics: ReturnType<typeof useBasics> }) {
   const price = basics.price;
@@ -304,7 +306,12 @@ function PriceEditor({ basics }: { basics: ReturnType<typeof useBasics> }) {
 
   return (
     <View style={styles.price}>
-      <Eyebrow>PREZZO USATO PER I COSTI</Eyebrow>
+      <Eyebrow>PREZZO DI RISERVA</Eyebrow>
+      <Text style={styles.muted}>
+        Ogni viaggio costa il prezzo dei rifornimenti da cui viene il carburante che ha bruciato. Questo
+        prezzo vale solo per i litri di origine sconosciuta: quelli già nel serbatoio al primo
+        rifornimento registrato, o di un rifornimento ancora da confermare.
+      </Text>
       <View style={styles.priceRow}>
         <TextInput
           value={shown}

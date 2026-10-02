@@ -5,6 +5,7 @@ import { ActivityIndicator, Dimensions, Pressable, StyleSheet, Text, TextInput, 
 import MapView, { Marker, Polyline } from "react-native-maps";
 import { api, ApiError } from "../../src/api";
 import { SubPage } from "../../src/components/trips/SubPage";
+import { tripCost } from "../../src/fuel";
 import { Dot, Eyebrow, GOOD, HAIRLINE, HAIRLINE_SOFT, StatGrid, WARN } from "../../src/components/trips/ui";
 import { colors, radius, spacing } from "../../src/theme";
 import { useAddresses, useBasics, useTrips } from "../../src/trips/data";
@@ -74,7 +75,7 @@ export default function TripDetailScreen() {
 
   const from = endpoint(trip, "start", basics.placeMap, addresses);
   const to = endpoint(trip, "end", basics.placeMap, addresses);
-  const cost = price != null && trip.fuel_used_l != null ? trip.fuel_used_l * price : null;
+  const cost = tripCost(trip, price);
   const vsAvg = trip.l_per_100km != null && avg != null ? trip.l_per_100km / avg - 1 : null;
   const tone = vsAvg == null ? null : vsAvg > 0.05 ? "warn" : vsAvg < -0.05 ? "good" : null;
   const start = new Date(trip.started_at);
