@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     # gestisse piu' veicoli con motorizzazioni diverse, diventerebbe un
     # campo per veicolo invece che una costante globale.
     fuel_type_mimit: str = "Benzina"
+    # Serbatoio della W177 di Andrea, in litri. Mercedes non lo comunica:
+    # vale quando vehicle.tank_capacity_l e' vuoto. Serve alla stima dei
+    # litri di un rifornimento e al costo FIFO dei viaggi (carburante gia'
+    # presente al primo rifornimento, riallineamento sui pieni).
+    tank_capacity_l: float = 43.0
     # MIMIT pubblica un nuovo estratto circa una volta al giorno (mattina):
     # una sync ogni 12h lo intercetta senza martellare il sito ogni poche ore.
     fuel_price_sync_interval_seconds: int = 12 * 3600

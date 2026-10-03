@@ -43,7 +43,9 @@ async def add_trip(db: Database, start_h: float, end_h: float, liters: float) ->
 
 
 async def add_refuel(db: Database, hours: float, liters: float, price: float | None) -> None:
-    refuel_id = await db.create_pending_refuel(VIN, at(hours), None, 10, 60, liters)
+    # Livello prima 0%: il primo rifornimento a serbatoio vuoto non lascia
+    # carburante d'origine sconosciuta davanti nella coda.
+    refuel_id = await db.create_pending_refuel(VIN, at(hours), None, 0, 50, liters)
     if price is not None:
         await db.confirm_refuel(refuel_id, liters, round(liters * price, 2), False, None)
 

@@ -10,6 +10,7 @@ from uuid import UUID
 
 import asyncpg
 
+from .config import settings
 from .fuel_cost import RefuelLot, TripCost, TripFuel, fifo_costs
 
 
@@ -96,7 +97,7 @@ class Database:
         value = await self.pool.fetchval(
             "SELECT tank_capacity_l FROM vehicle WHERE vin = $1", vin
         )
-        return float(value) if value is not None else None
+        return float(value) if value is not None else settings.tank_capacity_l
 
     async def get_fuel_level(self, vin: str) -> float | None:
         """Ultimo livello carburante conosciuto, letto PRIMA di aggiornarlo.
@@ -112,7 +113,8 @@ class Database:
     async def get_state(self, vin: str | None = None) -> list[dict[str, Any]]:
         rows = await self.pool.fetch(
             """
-            SELECT v.vin, v.display_name, v.tank_capacity_l,
+            SELECT v.vin, v.display_name,
+                   COALESCE(v.tank_capacity_l, $2) AS tank_capacity_l,
                    v.fuel_price_eur_per_l, s.updated_at,
                    ST_Y(s.position::geometry) AS latitude,
                    ST_X(s.position::geometry) AS longitude,
@@ -124,7 +126,7 @@ class Database:
             FROM vehicle v LEFT JOIN vehicle_state s USING (vin)
             WHERE $1::text IS NULL OR v.vin = $1
             """,
-            vin,
+            vin, settings.tank_capacity_l,
         )
         return [_row_to_dict(r) for r in rows]
 
